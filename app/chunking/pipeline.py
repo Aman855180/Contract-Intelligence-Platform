@@ -14,6 +14,7 @@ from app.embeddings.chroma_store import add_chunks
 from app.embeddings.embedder import embed_texts
 from app.models.document import DocumentChunk, ParsedDocument
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -33,22 +34,24 @@ def index_document(parsed_document: ParsedDocument) -> list[DocumentChunk]:
         Returns an empty list (with a warning logged) if the document
         produced zero chunks.
     """
-    chunks = chunk_parsed_document(parsed_document)
-    if not chunks:
-        logger.warning(
-            "Document '%s' (id=%s) produced zero chunks; nothing to index.",
+    with perf_span("document_indexing", extra_info=f"doc_id={parsed_document.metadata.document_id}"):
+        with perf_span("document_chunking"):
+            chunks = chunk_parsed_document(parsed_document)
+        if not chunks:
+            logger.warning(
+                "Document '%s' (id=%s) produced zero chunks; nothing to index.",
+                parsed_document.metadata.contract_name,
+                parsed_document.metadata.document_id,
+            )
+            return []
+
+        embeddings = embed_texts([c.text for c in chunks])
+        add_chunks(chunks, embeddings)
+
+        logger.info(
+            "Indexed document '%s' (id=%s): %d chunk(s) embedded and stored.",
             parsed_document.metadata.contract_name,
             parsed_document.metadata.document_id,
+            len(chunks),
         )
-        return []
-
-    embeddings = embed_texts([c.text for c in chunks])
-    add_chunks(chunks, embeddings)
-
-    logger.info(
-        "Indexed document '%s' (id=%s): %d chunk(s) embedded and stored.",
-        parsed_document.metadata.contract_name,
-        parsed_document.metadata.document_id,
-        len(chunks),
-    )
-    return chunks
+        return chunks

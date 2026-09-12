@@ -28,6 +28,7 @@ from docx.oxml.ns import qn
 from app.ingestion.exceptions import DocumentParsingError
 from app.models.document import PageText
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -64,43 +65,45 @@ def parse_docx(file_path: Path) -> list[PageText]:
     Raises:
         DocumentParsingError: If python-docx fails to open or read the file.
     """
-    try:
-        document = docx.Document(str(file_path))
-    except Exception as exc:
-        logger.error("Failed to open DOCX file %s: %s", file_path.name, exc)
-        raise DocumentParsingError(f"Could not open DOCX file '{file_path.name}': {exc}") from exc
+    with perf_span("document_loading", extra_info=f"file={file_path.name}"):
+        try:
+            document = docx.Document(str(file_path))
+        except Exception as exc:
+            logger.error("Failed to open DOCX file %s: %s", file_path.name, exc)
+            raise DocumentParsingError(f"Could not open DOCX file '{file_path.name}': {exc}") from exc
 
     pages: list[PageText] = []
     current_page_number = 1
     current_page_lines: list[str] = []
 
-    try:
-        # Also include text inside tables, in document order is not trivial with
-        # python-docx's flat body iteration, so we walk body children directly.
-        for element in document.element.body.iterchildren():
-            if element.tag == qn("w:p"):
-                paragraph = docx.text.paragraph.Paragraph(element, document)
-                if paragraph.text.strip():
-                    current_page_lines.append(paragraph.text)
-                if _paragraph_has_page_break(paragraph):
-                    pages.append(
-                        PageText(page_number=current_page_number, text="\n".join(current_page_lines).strip())
-                    )
-                    current_page_number += 1
-                    current_page_lines = []
-            elif element.tag == qn("w:tbl"):
-                table = docx.table.Table(element, document)
-                for row in table.rows:
-                    row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-                    if row_text:
-                        current_page_lines.append(row_text)
+    with perf_span("document_parsing", extra_info=f"file={file_path.name}"):
+        try:
+            # Also include text inside tables, in document order is not trivial with
+            # python-docx's flat body iteration, so we walk body children directly.
+            for element in document.element.body.iterchildren():
+                if element.tag == qn("w:p"):
+                    paragraph = docx.text.paragraph.Paragraph(element, document)
+                    if paragraph.text.strip():
+                        current_page_lines.append(paragraph.text)
+                    if _paragraph_has_page_break(paragraph):
+                        pages.append(
+                            PageText(page_number=current_page_number, text="\n".join(current_page_lines).strip())
+                        )
+                        current_page_number += 1
+                        current_page_lines = []
+                elif element.tag == qn("w:tbl"):
+                    table = docx.table.Table(element, document)
+                    for row in table.rows:
+                        row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                        if row_text:
+                            current_page_lines.append(row_text)
 
-        # Flush the final (or only) page.
-        pages.append(PageText(page_number=current_page_number, text="\n".join(current_page_lines).strip()))
+            # Flush the final (or only) page.
+            pages.append(PageText(page_number=current_page_number, text="\n".join(current_page_lines).strip()))
 
-    except Exception as exc:
-        logger.error("Failed while extracting text from DOCX %s: %s", file_path.name, exc)
-        raise DocumentParsingError(f"Failed extracting text from '{file_path.name}': {exc}") from exc
+        except Exception as exc:
+            logger.error("Failed while extracting text from DOCX %s: %s", file_path.name, exc)
+            raise DocumentParsingError(f"Failed extracting text from '{file_path.name}': {exc}") from exc
 
     logger.info(
         "Parsed DOCX '%s': %d pseudo-page(s) (based on hard page breaks).",

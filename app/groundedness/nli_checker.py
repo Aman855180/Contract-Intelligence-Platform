@@ -22,6 +22,7 @@ from app.groundedness.exceptions import GroundednessError
 from app.models.retrieval import GroundednessVerdict
 from app.utils.config_loader import get_settings
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,8 @@ def _load_nli_model() -> NLIModel:
 
     try:
         logger.info("Loading NLI groundedness model '%s'...", model_name)
-        _model_instance = _HuggingFaceNLIModel(model_name)
+        with perf_span("nli_model_loading", extra_info=f"model={model_name}"):
+            _model_instance = _HuggingFaceNLIModel(model_name)
         logger.info("NLI model '%s' loaded successfully.", model_name)
     except Exception as exc:
         logger.error("Failed to load NLI model '%s': %s", model_name, exc)
@@ -126,7 +128,8 @@ def check_groundedness(claim: str, source_passage: str) -> GroundednessVerdict:
 
     model = _load_nli_model()
     try:
-        scores = model.classify(premise=source_passage, hypothesis=claim)
+        with perf_span("nli_inference"):
+            scores = model.classify(premise=source_passage, hypothesis=claim)
     except Exception as exc:
         logger.error("NLI classification failed for claim '%s': %s", claim, exc)
         raise GroundednessError(f"NLI classification failed: {exc}") from exc
@@ -171,8 +174,9 @@ def check_contradiction(text_a: str, text_b: str) -> float:
     """
     model = _load_nli_model()
     try:
-        scores_a_to_b = model.classify(premise=text_a, hypothesis=text_b)
-        scores_b_to_a = model.classify(premise=text_b, hypothesis=text_a)
+        with perf_span("nli_inference_contradiction"):
+            scores_a_to_b = model.classify(premise=text_a, hypothesis=text_b)
+            scores_b_to_a = model.classify(premise=text_b, hypothesis=text_a)
     except Exception as exc:
         logger.error("NLI contradiction check failed: %s", exc)
         raise GroundednessError(f"NLI contradiction check failed: {exc}") from exc

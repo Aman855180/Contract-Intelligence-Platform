@@ -17,6 +17,7 @@ from app.retriever.bm25_index import search_bm25
 from app.retriever.fusion import reciprocal_rank_fusion
 from app.utils.config_loader import get_retrieval_config
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -36,51 +37,53 @@ def hybrid_retrieve(query: str) -> RetrievalResult:
         similarity_threshold via vector search. Q&A (Phase 5) uses this
         flag to decide whether to answer at all.
     """
-    retrieval_cfg = get_retrieval_config()["retrieval"]
-    top_k = retrieval_cfg["top_k"]
-    vector_top_k = retrieval_cfg["vector_top_k"]
-    bm25_top_k = retrieval_cfg["bm25_top_k"]
-    similarity_threshold = retrieval_cfg["similarity_threshold"]
-    rrf_k = get_retrieval_config()["fusion"]["rrf_k"]
+    with perf_span("hybrid_retrieval", extra_info=f"query_chars={len(query)}"):
+        retrieval_cfg = get_retrieval_config()["retrieval"]
+        top_k = retrieval_cfg["top_k"]
+        vector_top_k = retrieval_cfg["vector_top_k"]
+        bm25_top_k = retrieval_cfg["bm25_top_k"]
+        similarity_threshold = retrieval_cfg["similarity_threshold"]
+        rrf_k = get_retrieval_config()["fusion"]["rrf_k"]
 
-    if not query or not query.strip():
-        logger.warning("hybrid_retrieve called with an empty query.")
-        return RetrievalResult(query=query, chunks=[], above_threshold=False)
+        if not query or not query.strip():
+            logger.warning("hybrid_retrieve called with an empty query.")
+            return RetrievalResult(query=query, chunks=[], above_threshold=False)
 
-    query_embedding = embed_query(query)
-    vector_raw = query_similar(query_embedding, top_k=vector_top_k)
-    bm25_raw = search_bm25(query, top_k=bm25_top_k)
+        query_embedding = embed_query(query)
+        vector_raw = query_similar(query_embedding, top_k=vector_top_k)
+        bm25_raw = search_bm25(query, top_k=bm25_top_k)
 
-    fused = reciprocal_rank_fusion(vector_raw, bm25_raw, rrf_k)
-    top_fused = fused[:top_k]
+        with perf_span("rrf_fusion", extra_info=f"vec={len(vector_raw)} bm25={len(bm25_raw)}"):
+            fused = reciprocal_rank_fusion(vector_raw, bm25_raw, rrf_k)
+        top_fused = fused[:top_k]
 
-    above_threshold = any(
-        entry["vector_score"] is not None and entry["vector_score"] >= similarity_threshold
-        for entry in top_fused
-    )
-
-    chunks = [
-        RetrievedChunk(
-            chunk_id=entry["chunk_id"],
-            document_id=entry["metadata"]["document_id"],
-            contract_name=entry["metadata"]["contract_name"],
-            page_number=entry["metadata"]["page_number"],
-            text=entry["text"],
-            vector_score=entry["vector_score"],
-            bm25_score=entry["bm25_score"],
-            fused_score=entry["fused_score"],
+        above_threshold = any(
+            entry["vector_score"] is not None and entry["vector_score"] >= similarity_threshold
+            for entry in top_fused
         )
-        for entry in top_fused
-    ]
 
-    logger.info(
-        "Hybrid retrieval for query '%s': %d vector candidate(s), %d BM25 candidate(s), "
-        "%d fused result(s) returned (above_threshold=%s).",
-        query,
-        len(vector_raw),
-        len(bm25_raw),
-        len(chunks),
-        above_threshold,
-    )
+        chunks = [
+            RetrievedChunk(
+                chunk_id=entry["chunk_id"],
+                document_id=entry["metadata"]["document_id"],
+                contract_name=entry["metadata"]["contract_name"],
+                page_number=entry["metadata"]["page_number"],
+                text=entry["text"],
+                vector_score=entry["vector_score"],
+                bm25_score=entry["bm25_score"],
+                fused_score=entry["fused_score"],
+            )
+            for entry in top_fused
+        ]
 
-    return RetrievalResult(query=query, chunks=chunks, above_threshold=above_threshold)
+        logger.info(
+            "Hybrid retrieval for query '%s': %d vector candidate(s), %d BM25 candidate(s), "
+            "%d fused result(s) returned (above_threshold=%s).",
+            query,
+            len(vector_raw),
+            len(bm25_raw),
+            len(chunks),
+            above_threshold,
+        )
+
+        return RetrievalResult(query=query, chunks=chunks, above_threshold=above_threshold)

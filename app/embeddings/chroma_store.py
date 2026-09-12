@@ -23,6 +23,7 @@ from app.embeddings.exceptions import EmbeddingError
 from app.models.document import DocumentChunk
 from app.utils.config_loader import get_project_root, get_settings
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -103,23 +104,24 @@ def add_chunks(chunks: list[DocumentChunk], embeddings: list[list[float]]) -> No
         logger.warning("add_chunks called with an empty chunk list; nothing to store.")
         return
 
-    collection = get_or_create_collection()
-    collection.add(
-        ids=[c.chunk_id for c in chunks],
-        embeddings=embeddings,
-        documents=[c.text for c in chunks],
-        metadatas=[
-            {
-                "document_id": c.document_id,
-                "contract_name": c.contract_name,
-                "page_number": c.page_number,
-                "chunk_index": c.chunk_index,
-                "char_start": c.char_start,
-                "char_end": c.char_end,
-            }
-            for c in chunks
-        ],
-    )
+    with perf_span("chroma_add_chunks", extra_info=f"count={len(chunks)}"):
+        collection = get_or_create_collection()
+        collection.add(
+            ids=[c.chunk_id for c in chunks],
+            embeddings=embeddings,
+            documents=[c.text for c in chunks],
+            metadatas=[
+                {
+                    "document_id": c.document_id,
+                    "contract_name": c.contract_name,
+                    "page_number": c.page_number,
+                    "chunk_index": c.chunk_index,
+                    "char_start": c.char_start,
+                    "char_end": c.char_end,
+                }
+                for c in chunks
+            ],
+        )
     logger.info("Stored %d chunk(s) in ChromaDB collection '%s'.", len(chunks), _COLLECTION_NAME)
 
 
@@ -142,34 +144,35 @@ def query_similar(
         List of result dicts, each containing: chunk_id, text, metadata,
         and distance (cosine distance; lower is more similar).
     """
-    collection = get_or_create_collection()
-    if collection.count() == 0:
-        return []
+    with perf_span("chroma_vector_retrieval", extra_info=f"top_k={top_k} doc_id={document_id}"):
+        collection = get_or_create_collection()
+        if collection.count() == 0:
+            return []
 
-    where_filter = {"document_id": document_id} if document_id else None
+        where_filter = {"document_id": document_id} if document_id else None
 
-    raw = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(top_k, collection.count()),
-        where=where_filter,
-    )
-
-    results: list[dict] = []
-    ids = raw.get("ids", [[]])[0]
-    documents = raw.get("documents", [[]])[0]
-    metadatas = raw.get("metadatas", [[]])[0]
-    distances = raw.get("distances", [[]])[0]
-
-    for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
-        results.append(
-            {
-                "chunk_id": chunk_id,
-                "text": text,
-                "metadata": metadata,
-                "distance": distance,
-            }
+        raw = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=min(top_k, collection.count()),
+            where=where_filter,
         )
-    return results
+
+        results: list[dict] = []
+        ids = raw.get("ids", [[]])[0]
+        documents = raw.get("documents", [[]])[0]
+        metadatas = raw.get("metadatas", [[]])[0]
+        distances = raw.get("distances", [[]])[0]
+
+        for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
+            results.append(
+                {
+                    "chunk_id": chunk_id,
+                    "text": text,
+                    "metadata": metadata,
+                    "distance": distance,
+                }
+            )
+        return results
 
 
 def delete_document_chunks(document_id: str) -> None:

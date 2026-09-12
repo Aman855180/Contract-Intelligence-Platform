@@ -25,6 +25,7 @@ from app.risk.llm_classifier import classify_llm_risk_flags
 from app.risk.rule_based_flags import detect_rule_based_flags
 from app.risk.score_calculator import calculate_risk_score
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -49,32 +50,35 @@ def assess_risk(
         A fully populated RiskAssessment with rule-based flags,
         LLM-classified flags, and the deterministic risk score.
     """
-    if extraction is None:
-        extraction = extract_fields_from_document(document_id)
-        logger.info("Auto-extracted fields for risk assessment of '%s'.", extraction.contract_name)
+    with perf_span("risk_assessment_request", extra_info=f"doc_id={document_id}"):
+        if extraction is None:
+            extraction = extract_fields_from_document(document_id)
+            logger.info("Auto-extracted fields for risk assessment of '%s'.", extraction.contract_name)
 
-    # Step 1 — Rule-based: deterministic clause-presence checks.
-    rule_flags = detect_rule_based_flags(extraction)
+        # Step 1 — Rule-based: deterministic clause-presence checks.
+        with perf_span("risk_rule_based_detection"):
+            rule_flags = detect_rule_based_flags(extraction)
 
-    # Step 2 — LLM-classified: semantic risk with validated structured output.
-    llm_flags = classify_llm_risk_flags(document_id, extraction.contract_name)
+        # Step 2 — LLM-classified: semantic risk with validated structured output.
+        llm_flags = classify_llm_risk_flags(document_id, extraction.contract_name)
 
-    # Step 3 — Combine and score.
-    all_flags = rule_flags + llm_flags
-    risk_score = calculate_risk_score(all_flags)
+        # Step 3 — Combine and score.
+        all_flags = rule_flags + llm_flags
+        with perf_span("risk_score_calculation"):
+            risk_score = calculate_risk_score(all_flags)
 
-    assessment = RiskAssessment(
-        document_id=document_id,
-        contract_name=extraction.contract_name,
-        flags=all_flags,
-        risk_score=risk_score,
-    )
+        assessment = RiskAssessment(
+            document_id=document_id,
+            contract_name=extraction.contract_name,
+            flags=all_flags,
+            risk_score=risk_score,
+        )
 
-    logger.info(
-        "Risk assessment complete for '%s': score=%d, triggered flags=%d/%d.",
-        extraction.contract_name,
-        risk_score,
-        len(assessment.triggered_flags()),
-        len(all_flags),
-    )
-    return assessment
+        logger.info(
+            "Risk assessment complete for '%s': score=%d, triggered flags=%d/%d.",
+            extraction.contract_name,
+            risk_score,
+            len(assessment.triggered_flags()),
+            len(all_flags),
+        )
+        return assessment

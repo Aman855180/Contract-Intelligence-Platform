@@ -47,6 +47,7 @@ from app.models.risk import RiskAssessment, RiskFlag
 from app.reports.exceptions import ReportValidationError
 from app.utils.config_loader import get_retrieval_config, get_settings
 from app.utils.logging_setup import get_logger
+from app.utils.perf import llm_attempt_scope, perf_span
 
 logger = get_logger(__name__)
 
@@ -207,20 +208,21 @@ def _retrieve_report_context(document_id: str) -> str:
     Retrieve a broad set of passages from the target document for the report
     context block (avoids pulling passages from other indexed documents).
     """
-    retrieval_cfg = get_retrieval_config()
-    top_k = retrieval_cfg["retrieval"]["top_k"]
+    with perf_span("report_context_retrieval"):
+        retrieval_cfg = get_retrieval_config()
+        top_k = retrieval_cfg["retrieval"]["top_k"]
 
-    seen: set[str] = set()
-    blocks: list[str] = []
-    for query in _REPORT_RETRIEVAL_QUERIES:
-        vec = embed_query(query)
-        for r in query_similar(vec, top_k=top_k, document_id=document_id):
-            if r["chunk_id"] not in seen:
-                seen.add(r["chunk_id"])
-                m = r["metadata"]
-                blocks.append(f"[{m['contract_name']}, page {m['page_number']}]\n{r['text']}")
+        seen: set[str] = set()
+        blocks: list[str] = []
+        for query in _REPORT_RETRIEVAL_QUERIES:
+            vec = embed_query(query)
+            for r in query_similar(vec, top_k=top_k, document_id=document_id):
+                if r["chunk_id"] not in seen:
+                    seen.add(r["chunk_id"])
+                    m = r["metadata"]
+                    blocks.append(f"[{m['contract_name']}, page {m['page_number']}]\n{r['text']}")
 
-    return "\n\n".join(blocks) if blocks else "No passages retrieved."
+        return "\n\n".join(blocks) if blocks else "No passages retrieved."
 
 
 def _parse_llm_json(raw: str) -> dict:
@@ -273,53 +275,55 @@ def generate_report(
     prompt = base_prompt
     last_error = ""
 
-    for attempt in range(1, max_retries + 2):
-        try:
-            raw = generate(prompt)
-            parsed = _parse_llm_json(raw)
-            validated = _LLMReportOutput(**parsed)
+    with perf_span("report_llm_generation"):
+        for attempt in range(1, max_retries + 2):
+            try:
+                with llm_attempt_scope(attempt):
+                    raw = generate(prompt)
+                parsed = _parse_llm_json(raw)
+                validated = _LLMReportOutput(**parsed)
 
-            # Build the full ReportSchema — document_id and contract_name are
-            # injected here, not from LLM output.
-            report = ReportSchema(
-                document_id=extraction.document_id,
-                contract_name=extraction.contract_name,
-                overview=validated.overview,
-                key_parties=[
-                    KeyParty(**p.model_dump()) for p in validated.key_parties
-                ],
-                important_dates=[
-                    ImportantDate(**d.model_dump()) for d in validated.important_dates
-                ],
-                payment_terms=PaymentTermsSummary(**validated.payment_terms.model_dump()),
-                risk_flags=[
-                    ReportRiskFlag(**f.model_dump()) for f in validated.risk_flags
-                ],
-                key_clauses=[
-                    KeyClause(**c.model_dump()) for c in validated.key_clauses
-                ],
-                recommendations=validated.recommendations,
-            )
-
-            logger.info(
-                "Report generated for '%s' on attempt %d/%d.",
-                extraction.contract_name, attempt, max_retries + 1,
-            )
-            return report
-
-        except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
-            last_error = str(exc)
-            logger.warning(
-                "Report generation attempt %d/%d failed for '%s': %s",
-                attempt, max_retries + 1, extraction.contract_name, last_error,
-            )
-            if attempt <= max_retries:
-                prompt = (
-                    base_prompt
-                    + f"\n\nYour previous response was invalid. Error: {last_error}\n"
-                    "Return ONLY the JSON object. No markdown fences, no extra text. "
-                    "Ensure every field matches the schema exactly."
+                # Build the full ReportSchema — document_id and contract_name are
+                # injected here, not from LLM output.
+                report = ReportSchema(
+                    document_id=extraction.document_id,
+                    contract_name=extraction.contract_name,
+                    overview=validated.overview,
+                    key_parties=[
+                        KeyParty(**p.model_dump()) for p in validated.key_parties
+                    ],
+                    important_dates=[
+                        ImportantDate(**d.model_dump()) for d in validated.important_dates
+                    ],
+                    payment_terms=PaymentTermsSummary(**validated.payment_terms.model_dump()),
+                    risk_flags=[
+                        ReportRiskFlag(**f.model_dump()) for f in validated.risk_flags
+                    ],
+                    key_clauses=[
+                        KeyClause(**c.model_dump()) for c in validated.key_clauses
+                    ],
+                    recommendations=validated.recommendations,
                 )
+
+                logger.info(
+                    "Report generated for '%s' on attempt %d/%d.",
+                    extraction.contract_name, attempt, max_retries + 1,
+                )
+                return report
+
+            except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "Report generation attempt %d/%d failed for '%s': %s",
+                    attempt, max_retries + 1, extraction.contract_name, last_error,
+                )
+                if attempt <= max_retries:
+                    prompt = (
+                        base_prompt
+                        + f"\n\nYour previous response was invalid. Error: {last_error}\n"
+                        "Return ONLY the JSON object. No markdown fences, no extra text. "
+                        "Ensure every field matches the schema exactly."
+                    )
 
     raise ReportValidationError(
         f"Report generation failed for '{extraction.contract_name}' after "

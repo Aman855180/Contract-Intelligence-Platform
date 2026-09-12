@@ -35,6 +35,7 @@ from app.models.risk import RiskCategory, RiskFlag, RiskFlagSource
 from app.risk.exceptions import LLMClassificationError
 from app.utils.config_loader import get_retrieval_config, get_settings
 from app.utils.logging_setup import get_logger
+from app.utils.perf import llm_attempt_scope, perf_span
 
 logger = get_logger(__name__)
 
@@ -100,18 +101,19 @@ def _get_weight(category: RiskCategory) -> int:
 
 
 def _retrieve_risk_context(document_id: str) -> str:
-    retrieval_cfg = get_retrieval_config()
-    top_k = retrieval_cfg["retrieval"]["top_k"]
-    seen: set[str] = set()
-    blocks: list[str] = []
-    for query in _RETRIEVAL_QUERIES:
-        query_vec = embed_query(query)
-        for r in query_similar(query_vec, top_k=top_k, document_id=document_id):
-            if r["chunk_id"] not in seen:
-                seen.add(r["chunk_id"])
-                m = r["metadata"]
-                blocks.append(f"[{m['contract_name']}, page {m['page_number']}]\n{r['text']}")
-    return "\n\n".join(blocks) if blocks else "No relevant passages retrieved."
+    with perf_span("risk_context_retrieval", extra_info=f"doc_id={document_id}"):
+        retrieval_cfg = get_retrieval_config()
+        top_k = retrieval_cfg["retrieval"]["top_k"]
+        seen: set[str] = set()
+        blocks: list[str] = []
+        for query in _RETRIEVAL_QUERIES:
+            query_vec = embed_query(query)
+            for r in query_similar(query_vec, top_k=top_k, document_id=document_id):
+                if r["chunk_id"] not in seen:
+                    seen.add(r["chunk_id"])
+                    m = r["metadata"]
+                    blocks.append(f"[{m['contract_name']}, page {m['page_number']}]\n{r['text']}")
+        return "\n\n".join(blocks) if blocks else "No relevant passages retrieved."
 
 
 def _parse_llm_json(raw_text: str) -> dict:
@@ -235,64 +237,71 @@ def classify_llm_risk_flags(document_id: str, contract_name: str) -> list[RiskFl
         LLMClassificationError: If zero valid flags can be recovered from
             any response after all retries and permissive parsing.
     """
-    settings = get_settings()
-    max_retries: int = settings.get("llm", {}).get("max_json_retries", 3)
+    with perf_span("risk_llm_classification", extra_info=f"doc_id={document_id}"):
+        settings = get_settings()
+        max_retries: int = settings.get("llm", {}).get("max_json_retries", 3)
 
-    retrieved_context = _retrieve_risk_context(document_id)
-    base_prompt = load_prompt("risk_prompt.txt", retrieved_context=retrieved_context)
+        retrieved_context = _retrieve_risk_context(document_id)
+        base_prompt = load_prompt("risk_prompt.txt", retrieved_context=retrieved_context)
 
-    prompt = base_prompt
-    last_error: str = ""
-    last_raw: str = ""
+        prompt = base_prompt
+        last_error: str = ""
+        last_raw: str = ""
 
-    for attempt in range(1, max_retries + 2):
-        try:
-            last_raw = generate(prompt)
-            parsed_dict = _parse_llm_json(last_raw)
-            validated = _LLMRiskOutput(**parsed_dict)
+        for attempt in range(1, max_retries + 2):
+            try:
+                with llm_attempt_scope(attempt):
+                    last_raw = generate(prompt)
+                parsed_dict = _parse_llm_json(last_raw)
+                validated = _LLMRiskOutput(**parsed_dict)
 
-            flags = _build_risk_flags(validated)
-            logger.info(
-                "LLM risk classification succeeded for '%s' on attempt %d/%d.",
-                contract_name, attempt, max_retries + 1,
-            )
-            return flags
-
-        except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
-            last_error = str(exc)
-            logger.warning(
-                "LLM risk classification attempt %d/%d failed for '%s': %s",
-                attempt, max_retries + 1, contract_name, last_error[:200],
-            )
-            if attempt <= max_retries:
-                prompt = _repair_prompt(base_prompt, last_error)
-
-    # ---------------------------------------------------------------------------
-    # All full-validation attempts exhausted.
-    # Attempt permissive per-flag parsing to salvage individually-valid flags.
-    # ---------------------------------------------------------------------------
-    if last_raw:
-        try:
-            parsed_dict = _parse_llm_json(last_raw)
-            valid_flags, discarded_errors = _parse_flags_permissive(parsed_dict, contract_name)
-            if valid_flags:
-                logger.warning(
-                    "Returning %d valid flag(s) for '%s' after discarding %d invalid "
-                    "flag(s) via permissive parsing. Discarded: %s",
-                    len(valid_flags),
-                    contract_name,
-                    len(discarded_errors),
-                    discarded_errors,
+                flags = _build_risk_flags(validated)
+                logger.info(
+                    "LLM risk classification succeeded for '%s' on attempt %d/%d.",
+                    contract_name, attempt, max_retries + 1,
                 )
-                return valid_flags
-        except Exception as parse_exc:
-            logger.error(
-                "Permissive flag parsing also failed for '%s': %s",
-                contract_name, parse_exc,
-            )
+                return flags
 
-    raise LLMClassificationError(
-        f"LLM risk classification failed for '{contract_name}' after "
-        f"{max_retries + 1} attempt(s) and permissive parsing. "
-        f"Last error: {last_error}"
-    )
+            except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "LLM risk classification attempt %d/%d failed for '%s': %s",
+                    attempt, max_retries + 1, contract_name, last_error[:200],
+                )
+                if attempt <= max_retries:
+                    logger.info(
+                        "[PERF] operation=llm_retry_scheduled attempt=%d next_attempt=%d reason=validation_failure",
+                        attempt,
+                        attempt + 1,
+                    )
+                    prompt = _repair_prompt(base_prompt, last_error)
+
+        # ---------------------------------------------------------------------------
+        # All full-validation attempts exhausted.
+        # Attempt permissive per-flag parsing to salvage individually-valid flags.
+        # ---------------------------------------------------------------------------
+        if last_raw:
+            try:
+                parsed_dict = _parse_llm_json(last_raw)
+                valid_flags, discarded_errors = _parse_flags_permissive(parsed_dict, contract_name)
+                if valid_flags:
+                    logger.warning(
+                        "Returning %d valid flag(s) for '%s' after discarding %d invalid "
+                        "flag(s) via permissive parsing. Discarded: %s",
+                        len(valid_flags),
+                        contract_name,
+                        len(discarded_errors),
+                        discarded_errors,
+                    )
+                    return valid_flags
+            except Exception as parse_exc:
+                logger.error(
+                    "Permissive flag parsing also failed for '%s': %s",
+                    contract_name, parse_exc,
+                )
+
+        raise LLMClassificationError(
+            f"LLM risk classification failed for '{contract_name}' after "
+            f"{max_retries + 1} attempt(s) and permissive parsing. "
+            f"Last error: {last_error}"
+        )

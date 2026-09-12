@@ -12,6 +12,7 @@ and response parsing without requiring a running Ollama server.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import requests
@@ -19,17 +20,19 @@ import requests
 from app.llm.exceptions import OllamaConnectionError
 from app.utils.config_loader import get_settings
 from app.utils.logging_setup import get_logger
+from app.utils.perf import get_current_llm_attempt, log_llm_perf
 
 logger = get_logger(__name__)
 
 
-def _call_ollama_api(prompt: str) -> str:
+def _call_ollama_api(prompt: str, attempt: int = 1) -> str:
     """
     Send a single prompt to the configured Ollama /api/generate endpoint
     and return the raw generated text.
 
     Args:
         prompt: The fully formatted prompt string.
+        attempt: Attempt counter for retried calls.
 
     Returns:
         The raw text response from the LLM.
@@ -56,11 +59,27 @@ def _call_ollama_api(prompt: str) -> str:
         },
     }
 
+    prompt_chars = len(prompt)
+    logger.info(
+        "[PERF] operation=llm_request_start provider=ollama model=%s prompt_chars=%d attempt=%d",
+        model_name,
+        prompt_chars,
+        attempt,
+    )
+    t0 = time.perf_counter()
+
     try:
         response = requests.post(f"{base_url}/api/generate", json=payload, timeout=timeout_seconds)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.Timeout as exc:
+        duration = time.perf_counter() - t0
+        logger.error(
+            "[PERF] operation=llm_request_timeout duration=%.4fs provider=ollama model=%s attempt=%d",
+            duration,
+            model_name,
+            attempt,
+        )
         logger.error("Ollama request timed out after %ds at %s", timeout_seconds, base_url)
         raise OllamaConnectionError(
             f"OLLAMA_TIMEOUT: Ollama is running but did not respond within "
@@ -68,32 +87,76 @@ def _call_ollama_api(prompt: str) -> str:
             f"config/settings.yaml and try again."
         ) from exc
     except requests.exceptions.ConnectionError as exc:
+        duration = time.perf_counter() - t0
+        logger.error(
+            "[PERF] operation=llm_request_connection_error duration=%.4fs provider=ollama model=%s attempt=%d",
+            duration,
+            model_name,
+            attempt,
+        )
         logger.error("Cannot connect to Ollama at %s: %s", base_url, exc)
         raise OllamaConnectionError(
             f"OLLAMA_UNREACHABLE: Cannot connect to Ollama at {base_url}. "
             f"Start it with: ollama serve"
         ) from exc
     except requests.exceptions.RequestException as exc:
+        duration = time.perf_counter() - t0
+        logger.error(
+            "[PERF] operation=llm_request_failed duration=%.4fs provider=ollama model=%s attempt=%d",
+            duration,
+            model_name,
+            attempt,
+        )
         logger.error("Ollama request failed at %s: %s", base_url, exc)
         raise OllamaConnectionError(f"Ollama request failed: {exc}") from exc
     except ValueError as exc:  # JSON decoding failure
+        duration = time.perf_counter() - t0
+        logger.error(
+            "[PERF] operation=llm_request_invalid_json duration=%.4fs provider=ollama model=%s attempt=%d",
+            duration,
+            model_name,
+            attempt,
+        )
         logger.error("Ollama returned a non-JSON response: %s", exc)
         raise OllamaConnectionError(f"Ollama returned an invalid JSON response: {exc}") from exc
+
+    duration = time.perf_counter() - t0
 
     if "response" not in data:
         logger.error("Ollama response missing 'response' field: %s", data)
         raise OllamaConnectionError(f"Unexpected Ollama response shape (missing 'response' field): {data}")
 
-    return data["response"]
+    res_text = data["response"]
+    response_chars = len(res_text)
+
+    logger.info(
+        "[PERF] operation=llm_request_end duration=%.4fs provider=ollama model=%s attempt=%d",
+        duration,
+        model_name,
+        attempt,
+    )
+    log_llm_perf(
+        provider="ollama",
+        model=model_name,
+        duration=duration,
+        prompt_chars=prompt_chars,
+        response_chars=response_chars,
+        attempt=attempt,
+        log_logger=logger,
+    )
+
+    return res_text
 
 
-def generate(prompt: str) -> str:
+def generate(prompt: str, attempt: int | None = None) -> str:
+    if attempt is None:
+        attempt = get_current_llm_attempt()
     settings = get_settings()
     provider = settings.get("llm", {}).get("provider", "ollama")
 
     if provider == "gemini":
         from app.llm.gemini_client import generate_gemini
-        return generate_gemini(prompt)
+        return generate_gemini(prompt, attempt=attempt)
 
     # Default: Ollama
-    return _call_ollama_api(prompt)
+    return _call_ollama_api(prompt, attempt=attempt)

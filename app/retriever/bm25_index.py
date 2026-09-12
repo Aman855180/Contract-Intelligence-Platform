@@ -21,6 +21,7 @@ from rank_bm25 import BM25Okapi
 from app.embeddings.chroma_store import get_or_create_collection
 from app.retriever.exceptions import RetrievalError
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -87,17 +88,18 @@ def _ensure_index_built() -> _BM25IndexState | None:
     if _state is not None and _state.built_from_count == current_count:
         return _state
 
-    try:
-        tokenized_corpus = [_tokenize(t) for t in texts]
-        bm25 = BM25Okapi(tokenized_corpus)
-    except Exception as exc:
-        logger.error("Failed to build BM25 index: %s", exc)
-        raise RetrievalError(f"Failed to build BM25 index: {exc}") from exc
+    with perf_span("bm25_index_build", extra_info=f"chunk_count={current_count}"):
+        try:
+            tokenized_corpus = [_tokenize(t) for t in texts]
+            bm25 = BM25Okapi(tokenized_corpus)
+        except Exception as exc:
+            logger.error("Failed to build BM25 index: %s", exc)
+            raise RetrievalError(f"Failed to build BM25 index: {exc}") from exc
 
-    _state = _BM25IndexState(
-        bm25=bm25, chunk_ids=chunk_ids, texts=texts, metadatas=metadatas, built_from_count=current_count
-    )
-    logger.info("Built BM25 index over %d chunk(s).", current_count)
+        _state = _BM25IndexState(
+            bm25=bm25, chunk_ids=chunk_ids, texts=texts, metadatas=metadatas, built_from_count=current_count
+        )
+        logger.info("Built BM25 index over %d chunk(s).", current_count)
     return _state
 
 
@@ -113,31 +115,32 @@ def search_bm25(query: str, top_k: int) -> list[dict]:
         List of result dicts (chunk_id, text, metadata, bm25_score), sorted
         descending by score. Empty list if no chunks are indexed yet.
     """
-    state = _ensure_index_built()
-    if state is None:
-        return []
+    with perf_span("bm25_retrieval", extra_info=f"top_k={top_k}"):
+        state = _ensure_index_built()
+        if state is None:
+            return []
 
-    query_tokens = _tokenize(query)
-    if not query_tokens:
-        return []
+        query_tokens = _tokenize(query)
+        if not query_tokens:
+            return []
 
-    scores = state.bm25.get_scores(query_tokens)
+        scores = state.bm25.get_scores(query_tokens)
 
-    # Pair each chunk with its score, then take the top_k descending.
-    ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+        # Pair each chunk with its score, then take the top_k descending.
+        ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
 
-    results: list[dict] = []
-    for i in ranked_indices:
-        if scores[i] <= 0:
-            # A BM25 score of 0 means no query terms matched at all; don't
-            # surface irrelevant chunks just to pad out top_k.
-            continue
-        results.append(
-            {
-                "chunk_id": state.chunk_ids[i],
-                "text": state.texts[i],
-                "metadata": state.metadatas[i],
-                "bm25_score": float(scores[i]),
-            }
-        )
-    return results
+        results: list[dict] = []
+        for i in ranked_indices:
+            if scores[i] <= 0:
+                # A BM25 score of 0 means no query terms matched at all; don't
+                # surface irrelevant chunks just to pad out top_k.
+                continue
+            results.append(
+                {
+                    "chunk_id": state.chunk_ids[i],
+                    "text": state.texts[i],
+                    "metadata": state.metadatas[i],
+                    "bm25_score": float(scores[i]),
+                }
+            )
+        return results

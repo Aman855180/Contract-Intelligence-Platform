@@ -21,6 +21,7 @@ from app.reports.markdown_renderer import render_markdown
 from app.reports.report_generator import generate_report
 from app.risk.risk_service import assess_risk
 from app.utils.logging_setup import get_logger
+from app.utils.perf import perf_span
 
 logger = get_logger(__name__)
 
@@ -59,25 +60,27 @@ def generate_contract_report(
         ReportValidationError: If the LLM fails to produce valid JSON
             after all retries.
     """
-    if extraction is None:
-        extraction = extract_fields_from_document(document_id)
-        logger.info("Auto-extracted fields for report on '%s'.", extraction.contract_name)
+    with perf_span("report_generation_request", extra_info=f"doc_id={document_id}"):
+        if extraction is None:
+            extraction = extract_fields_from_document(document_id)
+            logger.info("Auto-extracted fields for report on '%s'.", extraction.contract_name)
 
-    if assessment is None:
-        assessment = assess_risk(document_id, extraction=extraction)
-        logger.info("Auto-assessed risk for report on '%s'.", extraction.contract_name)
+        if assessment is None:
+            assessment = assess_risk(document_id, extraction=extraction)
+            logger.info("Auto-assessed risk for report on '%s'.", extraction.contract_name)
 
-    report = generate_report(extraction, assessment)
+        report = generate_report(extraction, assessment)
 
-    # Markdown rendering is a pure transformation — no LLM, no I/O.
-    markdown = render_markdown(report)
+        # Markdown rendering is a pure transformation — no LLM, no I/O.
+        with perf_span("markdown_rendering"):
+            markdown = render_markdown(report)
 
-    logger.info(
-        "Report complete for '%s': %d parties, %d dates, %d risk flags, %d clauses.",
-        report.contract_name,
-        len(report.key_parties),
-        len(report.important_dates),
-        len(report.risk_flags),
-        len(report.key_clauses),
-    )
-    return ReportResult(report=report, markdown=markdown)
+        logger.info(
+            "Report complete for '%s': %d parties, %d dates, %d risk flags, %d clauses.",
+            report.contract_name,
+            len(report.key_parties),
+            len(report.important_dates),
+            len(report.risk_flags),
+            len(report.key_clauses),
+        )
+        return ReportResult(report=report, markdown=markdown)
