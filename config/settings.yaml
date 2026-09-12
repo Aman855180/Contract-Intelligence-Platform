@@ -1,0 +1,103 @@
+# =============================================================================
+# settings.yaml
+# General application settings for the Contract Intelligence Platform.
+# Keep all "magic numbers" / constants that are not retrieval-specific here.
+# =============================================================================
+
+app:
+  name: "Contract Intelligence Platform"
+  version: "0.1.0"
+  environment: "development"  # development | production
+
+paths:
+  data_dir: "data"
+  raw_documents_dir: "data/raw_documents"
+  sqlite_db_path: "data/contracts.db"
+  chroma_persist_dir: "data/chroma_store"
+  logs_dir: "logs"
+
+logging:
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  log_file: "logs/app.log"
+  max_bytes: 5_242_880  # 5 MB
+  backup_count: 3
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+llm:
+  #provider: "gemini"          # "ollama" | "gemini"
+  model_name: "gemini-3.5-flash"
+  request_timeout_seconds: 30
+
+  # Ollama-specific
+  ollama_base_url: "http://localhost:11434"
+
+  # Gemini-specific
+  gemini_api_key_env: "[REDACTED]"  # reads from environment variable
+  provider: "ollama"
+  model_name: "llama3.1:8b"
+  base_url: "http://localhost:11434"
+  temperature: 0.0          # deterministic outputs for structured generation
+  max_tokens: 2048
+  request_timeout_seconds: 300  #changed from 120 to 300 
+  max_json_retries: 3       # retries on Pydantic schema validation failure
+
+#llm:
+ 
+
+embeddings:
+  model_name: "BAAI/bge-base-en-v1.5"
+  device: "cpu"             # cpu | cuda
+  normalize_embeddings: true
+  batch_size: 16
+  # BGE models are trained asymmetrically: queries benefit from this instruction
+  # prefix, passages/chunks do not. Applied only in embed_query(), never in
+  # embed_texts() for document chunks.
+  query_instruction: "Represent this sentence for searching relevant passages: "
+
+groundedness:
+  nli_model_name: "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
+  entailment_threshold: 0.5   # min entailment probability to consider a claim grounded
+  contradiction_threshold: 0.5  # min contradiction probability to flag a clause mismatch
+
+ner:
+  # IMPORTANT DESIGN NOTE (corrected from initial Phase 1 placeholder):
+  # No publicly available pretrained model performs token-classification NER
+  # directly for contract clause TYPES (e.g. "payment_terms", "termination_clause")
+  # — that taxonomy doesn't exist in any off-the-shelf NER label set, and training
+  # one is fine-tuning, which is explicitly out of scope for this project.
+  #
+  # Clause-type fields (payment_terms, termination_clause, confidentiality_clause,
+  # liability_terms, renewal_terms, signature) are therefore extracted via curated
+  # keyword/pattern matching (app/extraction/clause_classifier.py, patterns in
+  # config/extraction_keywords.yaml) — deterministic and fully explainable.
+  #
+  # The actual pretrained HuggingFace NER pipeline below (dslim/bert-base-NER,
+  # CoNLL-2003 PER/ORG/LOC/MISC labels) is used where it's genuinely applicable:
+  # identifying the obligated party (PER/ORG entity) within sentences matched as
+  # obligations (app/extraction/obligation_extractor.py).
+  model_name: "dslim/bert-base-NER"
+  aggregation_strategy: "simple"
+  obligation_pattern_only_confidence: 0.5   # confidence when a sentence matches an obligation pattern but no NER entity (party) is found
+  date_regex_confidence: 0.9                # confidence assigned to regex-matched dates (deterministic but not semantically verified)
+
+risk_scoring:
+  # Deterministic weighted formula (documented fully in docs/DESIGN_DECISIONS.md):
+  #   risk_score = sum(weight_i * flag_triggered_i) clipped to [0, 100]
+  weights:
+    missing_signature_field: 25
+    missing_termination_clause: 20
+    missing_confidentiality_clause: 15
+    unlimited_indemnity_language: 20
+    high_liability_exposure: 15
+    ambiguous_payment_terms: 10
+  max_score: 100
+
+ingestion:
+  allowed_extensions: [".pdf", ".docx"]
+  max_file_size_mb: 25
+
+database:
+  # SQLite stores metadata and extracted structured fields ONLY.
+  # Embeddings/vectors are never stored here — they live exclusively in ChromaDB.
+  journal_mode: "WAL"
+  busy_timeout_ms: 5000

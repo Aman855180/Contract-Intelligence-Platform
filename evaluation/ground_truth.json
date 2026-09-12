@@ -1,0 +1,618 @@
+{
+  "version": "1.0",
+  "total_contracts": 20,
+  "contracts": {
+    "c01": {
+      "filename": "c01_contract.pdf",
+      "party_a": "Acme Corp",
+      "party_b": "Vertex Solutions",
+      "effective_date": "January 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c02": {
+      "filename": "c02_contract.pdf",
+      "party_a": "Acme Corp",
+      "party_b": "Vertex Solutions",
+      "effective_date": "January 1, 2025",
+      "payment_days": 60,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c03": {
+      "filename": "c03_contract.pdf",
+      "party_a": "Nexus Inc",
+      "party_b": "Orbital Tech",
+      "effective_date": "February 1, 2025",
+      "payment_days": 30,
+      "notice_days": 30,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c04": {
+      "filename": "c04_contract.pdf",
+      "party_a": "Nexus Inc",
+      "party_b": "Orbital Tech",
+      "effective_date": "February 1, 2025",
+      "payment_days": 90,
+      "notice_days": 30,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c05": {
+      "filename": "c05_contract.pdf",
+      "party_a": "Pinnacle Ltd",
+      "party_b": "Stratum Group",
+      "effective_date": "March 1, 2025",
+      "payment_days": 14,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c06": {
+      "filename": "c06_contract.pdf",
+      "party_a": "Pinnacle Ltd",
+      "party_b": "Stratum Group",
+      "effective_date": "March 1, 2025",
+      "payment_days": 45,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c07": {
+      "filename": "c07_contract.pdf",
+      "party_a": "Helios Partners",
+      "party_b": "Zenith LLC",
+      "effective_date": "January 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c08": {
+      "filename": "c08_contract.pdf",
+      "party_a": "Helios Partners",
+      "party_b": "Zenith LLC",
+      "effective_date": "March 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c09": {
+      "filename": "c09_contract.pdf",
+      "party_a": "Apex Corp",
+      "party_b": "Delta Services",
+      "effective_date": "April 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c10": {
+      "filename": "c10_contract.pdf",
+      "party_a": "Apex Corp",
+      "party_b": "Delta Services",
+      "effective_date": "April 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c11": {
+      "filename": "c11_contract.pdf",
+      "party_a": "Atlas Inc",
+      "party_b": "Mercury Tech",
+      "effective_date": "January 15, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c12": {
+      "filename": "c12_contract.pdf",
+      "party_a": "Orion Ltd",
+      "party_b": "Sirius Group",
+      "effective_date": "February 15, 2025",
+      "payment_days": 45,
+      "notice_days": 30,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c13": {
+      "filename": "c13_contract.pdf",
+      "party_a": "Solaris Corp",
+      "party_b": "Vega Solutions",
+      "effective_date": "March 15, 2025",
+      "payment_days": 60,
+      "notice_days": 90,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c14": {
+      "filename": "c14_contract.pdf",
+      "party_a": "Polaris Inc",
+      "party_b": "Andromeda LLC",
+      "effective_date": "April 15, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": []
+    },
+    "c15": {
+      "filename": "c15_contract.pdf",
+      "party_a": "Rigel Corp",
+      "party_b": "Lyra Tech",
+      "effective_date": "May 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": true,
+      "has_signature": false,
+      "expected_rule_risk_flags": [
+        "missing_signature_field"
+      ]
+    },
+    "c16": {
+      "filename": "c16_contract.pdf",
+      "party_a": "Cygnus Inc",
+      "party_b": "Aquila LLC",
+      "effective_date": "June 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": false,
+      "has_confidentiality": true,
+      "has_signature": true,
+      "expected_rule_risk_flags": [
+        "missing_termination_clause"
+      ]
+    },
+    "c17": {
+      "filename": "c17_contract.pdf",
+      "party_a": "Vela Corp",
+      "party_b": "Libra Tech",
+      "effective_date": "July 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": false,
+      "has_signature": true,
+      "expected_rule_risk_flags": [
+        "missing_confidentiality_clause"
+      ]
+    },
+    "c18": {
+      "filename": "c18_contract.pdf",
+      "party_a": "Corvus Ltd",
+      "party_b": "Lupus Group",
+      "effective_date": "August 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": false,
+      "has_confidentiality": true,
+      "has_signature": false,
+      "expected_rule_risk_flags": [
+        "missing_signature_field",
+        "missing_termination_clause"
+      ]
+    },
+    "c19": {
+      "filename": "c19_contract.pdf",
+      "party_a": "Pavo Inc",
+      "party_b": "Tucana LLC",
+      "effective_date": "September 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": true,
+      "has_confidentiality": false,
+      "has_signature": false,
+      "expected_rule_risk_flags": [
+        "missing_signature_field",
+        "missing_confidentiality_clause"
+      ]
+    },
+    "c20": {
+      "filename": "c20_contract.pdf",
+      "party_a": "Grus Corp",
+      "party_b": "Indus Tech",
+      "effective_date": "October 1, 2025",
+      "payment_days": 30,
+      "notice_days": 60,
+      "has_termination": false,
+      "has_confidentiality": false,
+      "has_signature": false,
+      "expected_rule_risk_flags": [
+        "missing_signature_field",
+        "missing_termination_clause",
+        "missing_confidentiality_clause"
+      ]
+    }
+  },
+  "comparison_pairs": [
+    {
+      "pair_id": "pair_01_payment",
+      "contract_a_id": "c01",
+      "contract_b_id": "c02",
+      "expected_inconsistencies": [
+        {
+          "field_type": "payment_terms",
+          "method": "rule_based_numeric_date",
+          "description": "payment 30 vs 60 days"
+        }
+      ]
+    },
+    {
+      "pair_id": "pair_02_payment",
+      "contract_a_id": "c03",
+      "contract_b_id": "c04",
+      "expected_inconsistencies": [
+        {
+          "field_type": "payment_terms",
+          "method": "rule_based_numeric_date",
+          "description": "payment 30 vs 90 days"
+        }
+      ]
+    },
+    {
+      "pair_id": "pair_03_payment",
+      "contract_a_id": "c05",
+      "contract_b_id": "c06",
+      "expected_inconsistencies": [
+        {
+          "field_type": "payment_terms",
+          "method": "rule_based_numeric_date",
+          "description": "payment 14 vs 45 days"
+        }
+      ]
+    },
+    {
+      "pair_id": "pair_04_date",
+      "contract_a_id": "c07",
+      "contract_b_id": "c08",
+      "expected_inconsistencies": [
+        {
+          "field_type": "key_dates",
+          "method": "rule_based_numeric_date",
+          "description": "effective date January vs March 2025"
+        }
+      ]
+    },
+    {
+      "pair_id": "pair_05_clean",
+      "contract_a_id": "c09",
+      "contract_b_id": "c10",
+      "expected_inconsistencies": []
+    }
+  ],
+  "qa_benchmark": [
+    {
+      "qa_id": "qa_c01_payment",
+      "contract_id": "c01",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c01_termination",
+      "contract_id": "c01",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c03_payment",
+      "contract_id": "c03",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c03_termination",
+      "contract_id": "c03",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c05_payment",
+      "contract_id": "c05",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "14",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c05_termination",
+      "contract_id": "c05",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c07_payment",
+      "contract_id": "c07",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c07_termination",
+      "contract_id": "c07",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c09_payment",
+      "contract_id": "c09",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c09_termination",
+      "contract_id": "c09",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c11_payment",
+      "contract_id": "c11",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c11_termination",
+      "contract_id": "c11",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c13_payment",
+      "contract_id": "c13",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c13_termination",
+      "contract_id": "c13",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "90",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c15_payment",
+      "contract_id": "c15",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c15_termination",
+      "contract_id": "c15",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c17_payment",
+      "contract_id": "c17",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c17_termination",
+      "contract_id": "c17",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    },
+    {
+      "qa_id": "qa_c19_payment",
+      "contract_id": "c19",
+      "question": "What is the payment term?",
+      "expected_keywords": [
+        "30",
+        "days"
+      ],
+      "source_page": 1
+    },
+    {
+      "qa_id": "qa_c19_termination",
+      "contract_id": "c19",
+      "question": "What is the notice period for termination?",
+      "expected_keywords": [
+        "60",
+        "days"
+      ],
+      "source_page": 2
+    }
+  ],
+  "risk_benchmark": [
+    {
+      "contract_id": "c01",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c02",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c03",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c04",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c05",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c06",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c07",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c08",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c09",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c10",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c11",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c12",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c13",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c14",
+      "expected_triggered_rule_flags": []
+    },
+    {
+      "contract_id": "c15",
+      "expected_triggered_rule_flags": [
+        "missing_signature_field"
+      ]
+    },
+    {
+      "contract_id": "c16",
+      "expected_triggered_rule_flags": [
+        "missing_termination_clause"
+      ]
+    },
+    {
+      "contract_id": "c17",
+      "expected_triggered_rule_flags": [
+        "missing_confidentiality_clause"
+      ]
+    },
+    {
+      "contract_id": "c18",
+      "expected_triggered_rule_flags": [
+        "missing_signature_field",
+        "missing_termination_clause"
+      ]
+    },
+    {
+      "contract_id": "c19",
+      "expected_triggered_rule_flags": [
+        "missing_signature_field",
+        "missing_confidentiality_clause"
+      ]
+    },
+    {
+      "contract_id": "c20",
+      "expected_triggered_rule_flags": [
+        "missing_signature_field",
+        "missing_termination_clause",
+        "missing_confidentiality_clause"
+      ]
+    }
+  ]
+}

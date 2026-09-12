@@ -1,0 +1,75 @@
+# =============================================================================
+# extraction_keywords.yaml
+# Curated keyword/phrase patterns for deterministic clause-type classification
+# (app/extraction/clause_classifier.py). Each list is matched case-insensitively
+# as substrings against chunk text. Tune these lists here rather than editing
+# Python code.
+#
+# Note: "key_dates" is handled separately via regex date-pattern extraction
+# (app/extraction/date_extractor.py), and "obligations" via sentence-level
+# pattern matching + NER party enrichment (app/extraction/obligation_extractor.py)
+# — neither appears here.
+# =============================================================================
+
+payment_terms:
+  - "payment"
+  - "invoice"
+  - "due within"
+  - "net 30"
+  - "net 60"
+  - "net 90"
+  - "fees shall be paid"
+  - "payable"
+  - "compensation"
+  - "amount due"
+
+termination_clause:
+  - "may terminate"
+  - "right to terminate"
+  - "notice of termination"
+  - "upon termination"
+  - "terminate this agreement"
+  - "termination for cause"
+  - "days' prior written notice"
+
+confidentiality_clause:
+  - "confidential"
+  - "non-disclosure"
+  - "nondisclosure"
+  - "proprietary information"
+  - "trade secret"
+  - "keep confidential"
+
+liability_terms:
+  - "liability"
+  - "liable"
+  - "indemnify"
+  - "indemnification"
+  - "limitation of liability"
+  - "damages"
+  - "hold harmless"
+
+renewal_terms:
+  - "renew"
+  - "renewal"
+  - "automatically extend"
+  - "auto-renew"
+  - "automatically renew"
+  - "extension of term"
+  - "evergreen"
+
+signature:
+  - "signature"
+  - "in witness whereof"
+  - "/s/"
+  - "authorized signatory"
+  - "duly executed"
+  - "undersigned"
+
+obligations:
+  - "shall"
+  - "agrees to"
+  - "responsible for"
+  - "obligated to"
+  - "must provide"
+  - "is required to"

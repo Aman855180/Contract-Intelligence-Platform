@@ -1,0 +1,22 @@
+# =============================================================================
+# retrieval.yaml
+# Fixed retrieval hyperparameters for the Contract Intelligence Platform.
+# These values are deliberately fixed per project spec — do not invent
+# alternate values elsewhere in the codebase. All retrieval/chunking code
+# must read these values from this file via app/utils/config_loader.py.
+# =============================================================================
+
+chunking:
+  chunk_size: 800        # characters
+  chunk_overlap: 100     # characters
+
+retrieval:
+  top_k: 5                       # number of chunks returned to the LLM
+  similarity_threshold: 0.35     # minimum vector similarity score to consider a chunk relevant
+                                  # (cosine similarity, 0-1 range with bge-base normalized embeddings)
+  bm25_top_k: 20                 # candidate pool size from BM25 before fusion
+  vector_top_k: 20               # candidate pool size from vector search before fusion
+
+fusion:
+  method: "reciprocal_rank_fusion"
+  rrf_k: 60   # standard RRF constant (1 / (rrf_k + rank))

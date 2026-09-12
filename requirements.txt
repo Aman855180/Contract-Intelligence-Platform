@@ -1,0 +1,39 @@
+# Core
+python-dotenv==1.0.1
+PyYAML==6.0.2
+pydantic==2.9.2
+
+# Frontend
+streamlit==1.39.0
+
+# Document parsing
+PyMuPDF==1.24.11
+python-docx==1.1.2
+
+# RAG / LangChain (retrieval/chain plumbing only)
+langchain==0.3.7
+langchain-community==0.3.5
+langchain-ollama==0.2.0
+
+# Embeddings
+sentence-transformers==3.2.1
+
+# Vector DB
+chromadb==0.5.18
+
+# Hybrid retrieval
+rank-bm25==0.2.2
+
+# NER / extraction
+transformers==4.46.2
+torch==2.5.1
+
+# Evaluation / metrics
+scikit-learn==1.5.2
+pandas==2.2.3
+
+# Testing
+pytest==8.3.3
+pytest-mock==3.14.0
+
+#gemini

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Data / generated artifacts
+data/
+logs/
+evaluation/results/*.json
+evaluation/results/*.csv
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
