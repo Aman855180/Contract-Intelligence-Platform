@@ -24,22 +24,27 @@ logging:
   format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 llm:
-  #provider: "gemini"          # "ollama" | "gemini"
-  model_name: "gemini-3.5-flash"
-  request_timeout_seconds: 30
+  provider: "ollama"            # "ollama" | "gemini"
+  temperature: 0.0              # deterministic outputs for structured generation
+  max_tokens: 2048
+  request_timeout_seconds: 300  # global timeout default
+  max_json_retries: 3           # retries on Pydantic schema validation failure
 
-  # Ollama-specific
-  ollama_base_url: "http://localhost:11434"
-
-  # Gemini-specific
-  gemini_api_key_env: "GEMINI_API_KEY"  # reads from environment variable
-  provider: "ollama"
+  # Top-level fallbacks for backward compatibility
   model_name: "llama3.1:8b"
   base_url: "http://localhost:11434"
-  temperature: 0.0          # deterministic outputs for structured generation
-  max_tokens: 2048
-  request_timeout_seconds: 300  #changed from 120 to 300 
-  max_json_retries: 3       # retries on Pydantic schema validation failure
+  gemini_api_key_env: "GEMINI_API_KEY"
+
+  # Provider-specific configurations
+  ollama:
+    model_name: "llama3.1:8b"
+    base_url: "http://localhost:11434"
+    request_timeout_seconds: 300
+
+  gemini:
+    model_name: "gemini-2.5-flash"
+    api_key_env: "GEMINI_API_KEY"
+    request_timeout_seconds: 30
 
 #llm:
  

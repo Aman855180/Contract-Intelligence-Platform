@@ -32,8 +32,8 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from app.embeddings.chroma_store import query_similar
 from app.embeddings.embedder import embed_query
-from app.llm.ollama_client import generate
 from app.llm.prompt_loader import load_prompt
+from app.llm.provider import generate
 from app.models.extraction import ContractExtractionResult
 from app.models.report import (
     ImportantDate,

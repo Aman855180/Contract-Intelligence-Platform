@@ -149,14 +149,10 @@ def _call_ollama_api(prompt: str, attempt: int = 1) -> str:
 
 
 def generate(prompt: str, attempt: int | None = None) -> str:
+    """
+    Generate text using the configured LLM provider (kept for backward compatibility).
+    """
     if attempt is None:
         attempt = get_current_llm_attempt()
-    settings = get_settings()
-    provider = settings.get("llm", {}).get("provider", "ollama")
-
-    if provider == "gemini":
-        from app.llm.gemini_client import generate_gemini
-        return generate_gemini(prompt, attempt=attempt)
-
-    # Default: Ollama
-    return _call_ollama_api(prompt, attempt=attempt)
+    from app.llm.provider import get_llm_provider
+    return get_llm_provider().generate(prompt, attempt=attempt)

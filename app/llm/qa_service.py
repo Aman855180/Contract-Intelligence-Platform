@@ -11,8 +11,8 @@ than trusting the LLM's own claim. This is the single entry point Phase
 from __future__ import annotations
 
 from app.groundedness.nli_checker import check_groundedness
-from app.llm.ollama_client import generate
 from app.llm.prompt_loader import load_prompt
+from app.llm.provider import generate
 from app.llm.response_parsers import parse_qa_response
 from app.models.retrieval import QAAnswer, RetrievedChunk
 from app.retriever.hybrid_retriever import hybrid_retrieve
