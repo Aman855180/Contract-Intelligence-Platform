@@ -32,7 +32,7 @@ llm:
   ollama_base_url: "http://localhost:11434"
 
   # Gemini-specific
-  gemini_api_key_env: "[REDACTED]"  # reads from environment variable
+  gemini_api_key_env: "GEMINI_API_KEY"  # reads from environment variable
   provider: "ollama"
   model_name: "llama3.1:8b"
   base_url: "http://localhost:11434"

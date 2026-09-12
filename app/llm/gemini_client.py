@@ -26,7 +26,7 @@ def generate_gemini(prompt: str) -> str:
 
     settings = get_settings()
     llm_cfg = settings.get("llm", {})
-    api_key_env = llm_cfg.get("gemini_api_key_env", "[REDACTED]")
+    api_key_env = llm_cfg.get("gemini_api_key_env", "GEMINI_API_KEY")
     api_key = os.getenv(api_key_env)
 
     if not api_key:
