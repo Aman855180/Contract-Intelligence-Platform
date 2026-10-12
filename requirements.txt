@@ -1,7 +1,7 @@
 # Core
 python-dotenv==1.0.1
 PyYAML==6.0.2
-pydantic==2.9.2
+pydantic==2.12.5
 
 # Frontend
 streamlit==1.39.0
