@@ -106,6 +106,24 @@ class TestEmbedQuery:
         assert raw_vector != query_vector
 
 
+class TestEmbedQueries:
+    def test_returns_batch_vectors(self, stub_model: StubEmbeddingModel) -> None:
+        queries = ["query 1", "query 2", "query 3"]
+        vectors = embedder.embed_queries(queries)
+        assert len(vectors) == 3
+        assert all(isinstance(v, list) for v in vectors)
+
+    def test_empty_input_returns_empty_list(self) -> None:
+        assert embedder.embed_queries([]) == []
+
+    def test_batch_matches_single_embed_query(self, stub_model: StubEmbeddingModel) -> None:
+        queries = ["indemnity obligations", "payment terms"]
+        batch_vectors = embedder.embed_queries(queries)
+        single_vectors = [embedder.embed_query(q) for q in queries]
+        assert batch_vectors == single_vectors
+
+
+
 class TestModelCaching:
     def test_model_loaded_only_once_across_multiple_calls(self, monkeypatch: pytest.MonkeyPatch) -> None:
         load_count = {"n": 0}

@@ -2,20 +2,46 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
-venv/
+.venv*/
+venv*/
+.pytest_cache/
+.pytest-tmp-ui/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage*
+htmlcov/
 
 # Environment
 .env
+.env.*
+!.env.example
 
 # Data / generated artifacts
 data/
 logs/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+*.log
+*.tmp
 evaluation/results/*.json
 evaluation/results/*.csv
 
+# Local diagnostics and machine-specific launchers
+/scratch/
+/run.bat
+/run.ps1
+/benchmark_output*.log
+
 # Streamlit
-.streamlit/
+/.streamlit/*
+!/.streamlit/
+!/.streamlit/config.toml
 
 # OS
 .DS_Store

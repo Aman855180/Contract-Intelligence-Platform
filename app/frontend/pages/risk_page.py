@@ -11,7 +11,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.extraction.extraction_service import extract_fields_from_document
-from app.frontend.components import document_selector, risk_score_gauge, severity_badge
+from app.frontend.components import document_selector, risk_score_gauge, severity_badge, show_operation_error
 from app.frontend.state import get_documents
 from app.models.risk import RiskCategory, RiskFlagSource
 from app.risk.exceptions import LLMClassificationError
@@ -49,25 +49,27 @@ def render() -> None:
             extraction = cache[meta.document_id]
             rule_flags = detect_rule_based_flags(extraction)
         except Exception as exc:
-            st.error(f"Field extraction failed: {exc}")
+            show_operation_error("Risk field extraction", exc)
             return
 
-    # LLM classification — gracefully degrade if Ollama not running.
+    # Keep rule-based findings available when provider classification fails.
     llm_flags = []
     llm_available = True
     with st.spinner("Running LLM risk classification…"):
         try:
             llm_flags = classify_llm_risk_flags(meta.document_id, meta.contract_name)
-        except LLMClassificationError as exc:
+        except LLMClassificationError:
             llm_available = False
             st.warning(
-                f"⚠️ LLM risk classification unavailable: {exc}\n\n"
-                "**Rule-based flags are shown below.** Start Ollama and reload to "
-                "include LLM-classified flags."
+                "LLM risk classification is unavailable. Rule-based flags are shown below; "
+                "check the configured provider and try again to include LLM-classified flags."
             )
         except Exception as exc:
             llm_available = False
-            st.warning(f"⚠️ LLM classification error: {exc}")
+            st.warning(
+                f"LLM classification could not complete ({type(exc).__name__}). "
+                "Rule-based flags are shown below."
+            )
 
     all_flags = rule_flags + llm_flags
     risk_score = calculate_risk_score(all_flags)
@@ -129,7 +131,7 @@ def _render_result(assessment) -> None:
                         f"Source: *{flag.source_contract}*, p. {flag.source_page}"
                     )
                 if flag.supporting_text:
-                    st.markdown(f"> {flag.supporting_text}")
+                    st.text(flag.supporting_text)
     else:
         st.success("✓ No risk flags triggered.")
 

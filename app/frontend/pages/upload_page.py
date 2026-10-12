@@ -12,6 +12,7 @@ import streamlit as st
 from app.chunking.pipeline import index_document
 from app.database.repository import delete_document, insert_parsed_document
 from app.embeddings.chroma_store import delete_document_chunks
+from app.frontend.components import show_operation_error
 from app.frontend.state import add_document, get_documents, remove_document
 from app.ingestion.document_parser import ingest_document
 from app.ingestion.file_storage import save_uploaded_file
@@ -32,6 +33,7 @@ def render() -> None:
         accept_multiple_files=True,
         help="Text-based PDFs and DOCX files only. Scanned/image-only PDFs are not supported.",
     )
+    st.caption("PDF or DOCX · Text-based PDFs only")
 
     if uploaded_files:
         for uploaded_file in uploaded_files:
@@ -58,7 +60,11 @@ def render() -> None:
                         f"{parsed.metadata.document_type.value.upper()}"
                     )
                 except Exception as exc:
-                    st.error(f"Failed to process **{uploaded_file.name}**: {exc}")
+                    show_operation_error(
+                        f"Processing {uploaded_file.name}",
+                        exc,
+                        "Check that the file is a readable, text-based PDF or DOCX, then try again.",
+                    )
 
     st.divider()
 

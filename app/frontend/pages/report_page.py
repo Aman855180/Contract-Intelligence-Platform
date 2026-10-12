@@ -11,7 +11,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.extraction.extraction_service import extract_fields_from_document
-from app.frontend.components import document_selector
+from app.frontend.components import document_selector, show_operation_error
 from app.frontend.state import get_documents
 from app.reports.exceptions import ReportValidationError
 from app.reports.report_service import generate_contract_report
@@ -47,7 +47,7 @@ def render() -> None:
             extraction = cache[meta.document_id]
 
             # Risk is needed for the report's risk flags section. Gracefully
-            # degrade to rule-based-only if LLM/Ollama isn't available.
+            # degrade to rule-based-only if provider-backed assessment fails.
             try:
                 assessment = assess_risk(meta.document_id, extraction=extraction)
             except Exception:
@@ -70,26 +70,18 @@ def render() -> None:
             st.session_state["last_report_result"] = report_result
 
         except ReportValidationError as exc:
-            st.error(
-                f"Report generation failed after all retries: {exc}\n\n"
-                "**Tip:** Ensure Ollama is running with `llama3.1:8b` loaded."
+            show_operation_error(
+                "Report generation and validation",
+                exc,
+                "The generated report did not pass validation. Check provider availability and try again.",
             )
             return
         except Exception as exc:
-            err_str = str(exc)
-            if "OLLAMA_TIMEOUT" in err_str:
-                st.error(
-                    "⏱ Ollama is running but report generation timed out. "
-                    "Increase `request_timeout_seconds` in `config/settings.yaml` "
-                    "(currently 300 s) and try again."
-                )
-            elif "OLLAMA_UNREACHABLE" in err_str or "refused" in err_str.lower():
-                st.error(
-                    "🔌 Cannot reach Ollama. Run `ollama serve` in a terminal, "
-                    "then `ollama pull llama3.1:8b` if you haven't already."
-                )
-            else:
-                st.error(f"Report generation failed: {exc}")
+            show_operation_error(
+                "Report generation",
+                exc,
+                "Check the configured LLM provider and local analysis-model availability, then try again.",
+            )
             return
 
     _render_result(st.session_state.get("last_report_result"))

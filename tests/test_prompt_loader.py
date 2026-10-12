@@ -30,12 +30,13 @@ class TestLoadPrompt:
         assert "{retrieved_context}" not in result
         assert "{question}" not in result
 
-    def test_loads_and_formats_risk_prompt_with_escaped_json_braces(self) -> None:
+    def test_loads_and_formats_risk_prompt_without_duplicate_json_schema(self) -> None:
         result = prompt_loader.load_prompt("risk_prompt.txt", retrieved_context="Some passage text.")
-        # The JSON example block should render with single braces (un-escaped from {{ }}).
-        assert '"flags"' in result
-        assert "{{" not in result
+        assert "unlimited_indemnity_language" in result
+        assert "high_liability_exposure" in result
+        assert "ambiguous_payment_terms" in result
         assert "Some passage text." in result
+        assert "{retrieved_context}" not in result
 
     def test_loads_summary_prompt(self) -> None:
         result = prompt_loader.load_prompt(
@@ -46,7 +47,10 @@ class TestLoadPrompt:
             risk_flags="[]",
         )
         assert "Payment terms: Net 30" in result
-        assert '"overview"' in result
+        assert "overview: string" in result
+        assert "important_dates: array" in result
+        assert "no more than 3 key clauses" in result
+        assert "no more than 2 actionable recommendations" in result
 
     def test_missing_prompt_file_raises(self) -> None:
         with pytest.raises(PromptNotFoundError):

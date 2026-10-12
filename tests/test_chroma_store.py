@@ -74,6 +74,23 @@ class TestAddAndQueryChunks:
         results = chroma_store.query_similar([0.0, 0.0, 0.0], top_k=3)
         assert len(results) == 3
 
+    def test_query_similar_batch_multiple_queries(self, isolated_chroma) -> None:
+        chunk_a = _make_chunk("doc-1", "Payment clause.", chunk_index=0)
+        chunk_b = _make_chunk("doc-1", "Termination clause.", chunk_index=1)
+        embeddings = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+        chroma_store.add_chunks([chunk_a, chunk_b], embeddings)
+
+        query_vecs = [[0.9, 0.1, 0.0], [0.1, 0.9, 0.0]]
+        batch_results = chroma_store.query_similar_batch(query_vecs, top_k=1)
+        assert len(batch_results) == 2
+        assert len(batch_results[0]) == 1
+        assert len(batch_results[1]) == 1
+        assert batch_results[0][0]["chunk_id"] == chunk_a.chunk_id
+        assert batch_results[1][0]["chunk_id"] == chunk_b.chunk_id
+
+    def test_query_similar_batch_empty_input(self, isolated_chroma) -> None:
+        assert chroma_store.query_similar_batch([], top_k=3) == []
+
     def test_query_on_empty_collection_returns_empty_list(self, isolated_chroma) -> None:
         results = chroma_store.query_similar([1.0, 0.0, 0.0], top_k=5)
         assert results == []

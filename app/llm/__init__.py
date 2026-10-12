@@ -1,4 +1,4 @@
-﻿"""
+"""
 app.llm
 
 LLM module providing provider abstraction, prompt loading, response parsing,
@@ -13,11 +13,20 @@ from app.llm.exceptions import (
     OllamaConnectionError,
     PromptNotFoundError,
 )
-from app.llm.provider import LLMProvider, generate, get_llm_provider, reset_provider_cache
+from app.llm.provider import (
+    LLMProvider,
+    generate,
+    get_llm_provider,
+    get_report_provider,
+    get_risk_provider,
+    reset_provider_cache,
+)
 
 __all__ = [
     "LLMProvider",
     "get_llm_provider",
+    "get_risk_provider",
+    "get_report_provider",
     "generate",
     "reset_provider_cache",
     "LLMError",

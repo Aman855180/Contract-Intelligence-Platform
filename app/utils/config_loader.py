@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if present
+load_dotenv()
 
 # Project root is two levels up from this file: app/utils/config_loader.py -> project root
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]

@@ -29,6 +29,7 @@ st.set_page_config(
 
 # ── Runtime initialisation (once per session) ────────────────────────────────
 from app.database.sqlite_db import init_db  # noqa: E402
+from app.frontend.components import apply_app_styles  # noqa: E402
 from app.frontend.state import document_count, get_documents, init_session_state  # noqa: E402
 
 # init_db is idempotent — safe to call on every page refresh.
@@ -44,9 +45,11 @@ from app.frontend.pages import (  # noqa: E402
     upload_page,
 )
 
+apply_app_styles()
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("📋 Contract Intelligence")
+    st.markdown("#### 📋 Contract Intelligence")
     st.caption("AI-powered contract analysis")
 
     st.divider()
@@ -68,14 +71,17 @@ with st.sidebar:
     # ── Indexed documents summary ─────────────────────────────────────────────
     n_docs = document_count()
     if n_docs == 0:
-        st.info("No contracts indexed.\nUpload contracts to begin.")
+        st.caption("Indexed contracts: 0")
     else:
         st.success(f"**{n_docs}** contract(s) indexed")
-        for meta in get_documents().values():
+        docs = list(get_documents().values())
+        for meta in docs[:3]:
             st.caption(f"• {meta.contract_name}")
+        if n_docs > 3:
+            st.caption(f"And {n_docs - 3} more")
 
     st.divider()
-    st.caption("Built with Streamlit · Ollama · ChromaDB · BM25")
+    st.caption("Streamlit · Gemini / Ollama · ChromaDB · BM25")
 
 # ── Page routing ──────────────────────────────────────────────────────────────
 if page == "📂 Upload":

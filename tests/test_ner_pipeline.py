@@ -104,7 +104,7 @@ class TestPipelineCaching:
         stub = StubNERPipeline()
 
         class _CountingPipelineFactory:
-            def __call__(self, task: str, model: str, aggregation_strategy: str):
+            def __call__(self, task: str, model: str, aggregation_strategy: str, **kwargs):
                 load_count["n"] += 1
                 return stub
 

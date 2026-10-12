@@ -24,6 +24,14 @@ class LLMProviderError(LLMError):
     """Raised when an unknown or misconfigured LLM provider is requested."""
 
 
+class LLMPermanentError(LLMError):
+    """Raised for non-retryable errors such as invalid credentials, bad requests, or missing models."""
+
+
+class GeminiPermanentError(GeminiConnectionError, LLMPermanentError):
+    """Raised for permanent non-retryable Gemini errors (invalid key, bad arguments)."""
+
+
 class LLMResponseParsingError(LLMError):
     """Raised when the LLM's raw text response doesn't match the expected format."""
 

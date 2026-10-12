@@ -4,10 +4,9 @@ An AI-powered contract analysis tool that lets you upload contracts (PDF/DOCX)
 and query, compare, and assess them — with every answer grounded in a retrieved
 passage and verified by an independent NLI entailment check.
 
-Built as a focused portfolio project demonstrating production-quality RAG
-engineering: hybrid retrieval, structured LLM output with Pydantic validation,
-NLI-based groundedness scoring, and a documented evaluation methodology with
-real metric numbers.
+Built as a portfolio project demonstrating hybrid retrieval, structured LLM
+output with Pydantic validation, NLI-based groundedness scoring, and a
+documented evaluation methodology.
 
 ---
 
@@ -24,7 +23,7 @@ flowchart TD
     F --> H[Reciprocal Rank\nFusion RRF k=60]
     G --> H
     H --> I[Top-K Chunks\nk=5]
-    I --> J[Ollama LLM\nllama3.1:8b]
+    I --> J[Configured LLM\nGemini or Ollama]
     J --> K[Pydantic\nSchema Validation]
     K --> L{Feature}
     L --> M[Grounded Q&A\n+ NLI Groundedness Score]
@@ -138,11 +137,56 @@ risk flags. Run `python scripts/run_evaluation.py` to reproduce.
 |---|---|
 | NLI groundedness rate | `REQUIRES_MODEL`: DeBERTa-v3-base-mnli-fever-anli |
 | Vector retrieval recall | `REQUIRES_MODEL`: BAAI/bge-base-en-v1.5 |
-| LLM structured output validity (live) | `REQUIRES_MODEL`: Ollama + llama3.1:8b |
+| LLM structured output validity (live) | `REQUIRES_MODEL`: configured Gemini or Ollama provider |
 
 The evaluation harness (`evaluation/eval_harness.py`) and runner
 (`scripts/run_evaluation.py`) are fully built. These metrics produce real
 numbers when run with the full model stack.
+
+---
+
+## Performance Optimization Results
+
+The timings below are individual wall-clock spans recorded in the application
+performance logs, not averages. They describe observed executions and should
+not be read as a controlled production benchmark.
+
+### Cache-cold and warm observations
+
+| Workflow / metric | Earlier (cold) | Later (warm) | Elapsed-time change | Conditions and outcome |
+|---|---:|---:|---:|---|
+| Ingestion + indexing | 19.7713 s (Sep 14) | 0.8734 s (Sep 14) | **95.6% lower** | Cold phase logged embedding-model loading (18.1229 s). One sample per phase. |
+| Ingestion + indexing, separate run | 19.5315 s (Oct 12) | 1.3030 s (Oct 12) | **93.3% lower** | Cold phase logged embedding-model loading (17.7744 s). Warm embedding/indexing work still took time. |
+| Q&A | 11.1411 s (Sep 14) | 6.6161 s (Sep 14) | **40.6% lower** | Gemini `gemini-3.6-flash`; one request per phase. Cold sequence logged NLI model loading (2.0116 s). |
+| Risk assessment | 10.6119 s (Sep 14) | 9.5839 s (Sep 14) | **9.7% lower** | Gemini `gemini-3.6-flash`; one request per phase. Small sample; no accuracy evaluation implied. |
+| Report workflow | 22.2174 s (Sep 14) | 27.4403 s (Sep 14) | **23.5% higher** | Both report-complete events were logged. These outer spans include risk assessment; the warm run was slower. |
+
+The log records show the cold-to-warm sequences in time order, but do not store
+phase labels alongside these individual spans. They provide no repeated
+samples or statistical summaries. Treat the pairs as indicative cache
+observations, not estimates of typical latency.
+
+### Historical observations and report outcomes
+
+| Workflow / metric | Earlier observation | Later observation | Change | Interpretation |
+|---|---:|---:|---:|---|
+| Q&A request | 49.5249 s (Oct 10) | 9.7568 s (Oct 12) | **80.3% lower** (indicative) | Both logs show Gemini `gemini-3.6-flash`. Earlier: embedding-model loading 36.6024 s and hybrid retrieval 38.7969 s; later retrieval 0.3640 s. Different cache/retrieval conditions make this non-controlled. |
+| Report generation | 454.6337 s; failed after retries (Oct 12) | 11.6040 s report LLM span; succeeded (Oct 12) | Not a controlled speed comparison | Earlier enclosing request: 455.0457 s, with repeated provider/fallback attempts and a final logged Ollama call of 120.5730 s. Later report-only request: 11.9942 s overall and report-complete logged. Outcomes, retries, and provider paths differ. |
+| Full report workflow | — | 64.6807 s; succeeded (Oct 12) | Not comparable to report-only | Included field extraction, risk assessment, and report generation. The logs verify 64.6807 s; the separately cited ~65.52 s was not found as an exact log measurement. |
+
+### Methodology and limits
+
+- First requests can be slower because embedding, NLI, or other models load on
+  demand. A warm run in the same process is not equivalent to a fresh-process
+  startup measurement.
+- LLM latency varies with provider availability, generation time, and retries.
+  Failed attempts are reported as failures, not successful performance results.
+- The percentages use `((earlier - later) / earlier) * 100`. Historical
+  cross-run comparisons are labeled indicative when cache state or workflow
+  conditions differ; no percentage is claimed for unlike report outcomes.
+- Structured validation and workflow completion matter alongside elapsed
+  time. These logs do not establish improved classification accuracy; that
+  would require a representative evaluation dataset and measured results.
 
 ---
 
@@ -151,7 +195,7 @@ numbers when run with the full model stack.
 | Layer | Technology |
 |---|---|
 | Frontend | Streamlit 1.39 |
-| LLM | Ollama · llama3.1:8b (local, no API cost) |
+| LLM | Gemini · gemini-3.6-flash (workflow default); Ollama · llama3.1:8b (configurable/fallback) |
 | RAG Framework | LangChain (retrieval plumbing) |
 | Embeddings | `BAAI/bge-base-en-v1.5` via sentence-transformers |
 | Vector DB | ChromaDB 0.5 (persistent, HNSW cosine) |
@@ -165,7 +209,7 @@ numbers when run with the full model stack.
 | Configuration | YAML (`config/settings.yaml`, `config/retrieval.yaml`) |
 | Prompts | Externalized `.txt` files under `prompts/` |
 | Logging | Python `logging` (rotating file + console) |
-| Testing | pytest · 304 tests · stable across PYTHONHASHSEED |
+| Testing | pytest (see `tests/`) |
 
 ---
 
@@ -192,7 +236,7 @@ contract-intelligence-platform/
 │   ├── comparison/                 # Field aligner + rule-based + NLI comparison
 │   ├── risk/                       # Rule-based flags + LLM classifier + scorer
 │   ├── groundedness/               # NLI entailment checker
-│   ├── llm/                        # Ollama client + prompt loader + QA service
+│   ├── llm/                        # Provider factory, Gemini/Ollama providers, prompts, QA service
 │   ├── reports/                    # JSON generator + Markdown renderer
 │   ├── models/                     # Pydantic schemas (all data contracts)
 │   ├── database/                   # SQLite connection + repository
@@ -226,8 +270,8 @@ contract-intelligence-platform/
 
 ## Installation
 
-**Prerequisites:** Python 3.12, [Ollama](https://ollama.com/download) installed
-and running.
+**Prerequisites:** Python 3.12 and a Gemini API key for the configured
+workflows. Ollama can be run locally as the configured fallback/provider.
 
 ```bash
 # 1. Clone
@@ -237,7 +281,7 @@ cd contract-intelligence-platform
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Pull the LLM
+# 3. Optional: install/run Ollama for local generation or fallback
 ollama pull llama3.1:8b
 
 # 4. Copy environment config
@@ -253,6 +297,26 @@ streamlit run app.py
 ```
 
 Open `http://localhost:8501` in your browser.
+
+### Streamlit Community Cloud
+
+Deploy `app.py` from the repository root with Python 3.12. In the app's
+Community Cloud **Advanced settings → Secrets**, add:
+
+```toml
+GEMINI_API_KEY = "your-key"
+LLM_PROVIDER = "gemini"
+LLM_FALLBACK_TO_OLLAMA = "false"
+```
+
+The key is read from the process environment first, then from Streamlit
+Secrets. `LLM_PROVIDER` selects Gemini for Q&A, Risk, and Report workflows;
+disabling fallback prevents the app from requiring a local Ollama server.
+Local `.env` values and the YAML provider/fallback defaults remain supported.
+Do not commit a local `.env` or `.streamlit/secrets.toml` file. The configured
+model identifier is [`gemini-3.6-flash`](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash);
+Google's model documentation lists it as stable and supporting structured
+outputs.
 
 **First run:** the embedding model (`bge-base-en-v1.5`) and NER model
 (`bert-base-NER`) download automatically on first upload. This takes a few
@@ -278,7 +342,9 @@ and `.csv`.
 pytest tests/
 ```
 
-304 tests. All deterministic — stable across `PYTHONHASHSEED` values.
+The test suite is run with `pytest tests/`. Evaluation and model-backed tests
+may require local model files or provider credentials, as indicated by the
+individual test setup.
 
 ---
 
@@ -288,7 +354,7 @@ All tuneable parameters are in `config/` — no magic numbers in Python files.
 
 | File | Key settings |
 |---|---|
-| `settings.yaml` | LLM model, timeout (300 s), embedding model, risk weights |
+| `settings.yaml` | LLM providers/models, global timeout (120 s), Gemini timeout (30 s), Ollama timeout (600 s), embedding model, risk weights |
 | `retrieval.yaml` | `chunk_size: 800`, `chunk_overlap: 100`, `top_k: 5`, `rrf_k: 60` |
 | `extraction_keywords.yaml` | Clause-type keyword patterns (editable without touching Python) |
 

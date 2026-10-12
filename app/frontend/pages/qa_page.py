@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.frontend.components import citation_tag, groundedness_badge
+from app.frontend.components import citation_tag, groundedness_badge, show_operation_error
 from app.frontend.state import get_documents
 from app.llm.qa_service import answer_question
 
@@ -43,10 +43,10 @@ def render() -> None:
             result = answer_question(question.strip())
             st.session_state["last_qa_result"] = result
         except Exception as exc:
-            st.error(f"Q&A failed: {exc}")
-            st.info(
-                "**Tip:** Q&A requires Ollama running locally with `llama3.1:8b` loaded. "
-                "Start it with: `ollama serve` and `ollama pull llama3.1:8b`"
+            show_operation_error(
+                "Q&A",
+                exc,
+                "Check the configured LLM provider and its availability, then try again.",
             )
             return
 
@@ -88,7 +88,7 @@ def _render_result(result) -> None:
     # ── Supporting text ──────────────────────────────────────────────────────
     if result.supporting_text:
         with st.expander("Supporting passage from contract"):
-            st.markdown(f"> {result.supporting_text}")
+            st.text(result.supporting_text)
 
     # ── Groundedness detail ──────────────────────────────────────────────────
     if result.groundedness:

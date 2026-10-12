@@ -1,4 +1,4 @@
-﻿"""
+"""
 ollama_provider.py
 
 Ollama implementation of the LLMProvider interface.
@@ -52,7 +52,12 @@ class OllamaProvider(LLMProvider):
     def model_name(self) -> str:
         return self._model_name
 
-    def generate(self, prompt: str, attempt: int | None = None) -> str:
+    def generate(
+        self,
+        prompt: str,
+        attempt: int | None = None,
+        response_schema: Any | None = None,
+    ) -> str:
         """
         Generate text response via Ollama HTTP API.
         Delegates to app.llm.ollama_client._call_ollama_api so existing test mocks remain active.

@@ -51,11 +51,13 @@ def _configure_root_logger() -> None:
     root_logger.setLevel(level)
     root_logger.propagate = False
 
-    # Avoid duplicate handlers if this function somehow runs more than once.
     if not root_logger.handlers:
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
+
+        # Suppress harmless Chroma telemetry warnings caused by version mismatches in PostHog client
+        logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
         file_handler = logging.handlers.RotatingFileHandler(
             filename=str(log_file_path),

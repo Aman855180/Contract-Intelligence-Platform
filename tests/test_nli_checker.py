@@ -107,7 +107,7 @@ class TestModelCaching:
         stub = StubNLIModel(entailment=0.8, neutral=0.1, contradiction=0.1)
 
         class _CountingFactory:
-            def __call__(self, model_name: str):
+            def __call__(self, model_name: str, **kwargs):
                 load_count["n"] += 1
                 return stub
 

@@ -41,13 +41,20 @@ class NLIModel(Protocol):
 class _HuggingFaceNLIModel:
     """Wraps a transformers AutoModelForSequenceClassification NLI checkpoint."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, device: str = "cpu") -> None:
+        import os
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+        # Optimize CPU threads to prevent thrashing
+        if device == "cpu":
+            target_threads = min(os.cpu_count() or 4, 12)
+            torch.set_num_threads(target_threads)
+
         self._torch = torch
+        self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name).to(device)
         self.model.eval()
         # Build a case-insensitive label -> index map so we don't hardcode an
         # assumed label ordering (different NLI checkpoints order labels
@@ -57,8 +64,9 @@ class _HuggingFaceNLIModel:
         }
 
     def classify(self, premise: str, hypothesis: str) -> dict[str, float]:
-        inputs = self.tokenizer(premise, hypothesis, return_tensors="pt", truncation=True)
-        with self._torch.no_grad():
+        inputs = self.tokenizer(premise, hypothesis, return_tensors="pt", truncation=True).to(self.device)
+        # Use inference_mode which is significantly faster than no_grad
+        with self._torch.inference_mode():
             logits = self.model(**inputs).logits[0]
             probs = self._torch.softmax(logits, dim=-1).tolist()
 
@@ -83,14 +91,16 @@ def _load_nli_model() -> NLIModel:
         return _model_instance
 
     settings = get_settings()
-    model_name = settings.get("groundedness", {}).get(
+    groundedness_cfg = settings.get("groundedness", {})
+    model_name = groundedness_cfg.get(
         "nli_model_name", "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli"
     )
+    device = groundedness_cfg.get("device", "cpu")
 
     try:
-        logger.info("Loading NLI groundedness model '%s'...", model_name)
-        with perf_span("nli_model_loading", extra_info=f"model={model_name}"):
-            _model_instance = _HuggingFaceNLIModel(model_name)
+        logger.info("Loading NLI groundedness model '%s' on device '%s'...", model_name, device)
+        with perf_span("nli_model_loading", extra_info=f"model={model_name} device={device}"):
+            _model_instance = _HuggingFaceNLIModel(model_name, device=device)
         logger.info("NLI model '%s' loaded successfully.", model_name)
     except Exception as exc:
         logger.error("Failed to load NLI model '%s': %s", model_name, exc)

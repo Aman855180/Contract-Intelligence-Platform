@@ -12,7 +12,7 @@ import streamlit as st
 
 from app.comparison.comparison_service import compare_contracts
 from app.extraction.extraction_service import extract_fields_from_document
-from app.frontend.components import document_selector
+from app.frontend.components import document_selector, show_operation_error
 from app.frontend.state import get_documents
 from app.models.comparison import MismatchDetectionMethod
 
@@ -62,12 +62,11 @@ def render() -> None:
             st.session_state["last_comparison_result"] = result
 
         except Exception as exc:
-            st.error(f"Comparison failed: {exc}")
-            if "NLI" in str(exc) or "Groundedness" in str(exc):
-                st.info(
-                    "**Tip:** NLI-based detection requires the DeBERTa model. "
-                    "Rule-based results (numeric/date mismatches) still ran."
-                )
+            show_operation_error(
+                "Contract comparison",
+                exc,
+                "Confirm both contracts are indexed and the required local analysis models are available.",
+            )
             return
 
     _render_result(st.session_state.get("last_comparison_result"))
@@ -109,8 +108,8 @@ def _render_result(result) -> None:
             col_a, col_b = st.columns(2)
             with col_a:
                 st.markdown(f"**{inc.contract_a_name}** (p. {inc.contract_a_page})")
-                st.markdown(f"> {inc.contract_a_text[:400]}")
+                st.text(inc.contract_a_text[:400])
             with col_b:
                 st.markdown(f"**{inc.contract_b_name}** (p. {inc.contract_b_page})")
-                st.markdown(f"> {inc.contract_b_text[:400]}")
+                st.text(inc.contract_b_text[:400])
             st.caption(f"**Explanation:** {inc.explanation}")

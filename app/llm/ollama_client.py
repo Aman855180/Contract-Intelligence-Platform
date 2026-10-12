@@ -43,11 +43,12 @@ def _call_ollama_api(prompt: str, attempt: int = 1) -> str:
     """
     settings = get_settings()
     llm_cfg = settings.get("llm", {})
-    base_url = llm_cfg.get("base_url", "http://localhost:11434")
-    model_name = llm_cfg.get("model_name", "llama3.1:8b")
+    ollama_cfg = llm_cfg.get("ollama", {})
+    base_url = ollama_cfg.get("base_url") or llm_cfg.get("base_url", "http://localhost:11434")
+    model_name = ollama_cfg.get("model_name") or llm_cfg.get("model_name", "llama3.1:8b")
     temperature = llm_cfg.get("temperature", 0.0)
     max_tokens = llm_cfg.get("max_tokens", 2048)
-    timeout_seconds = llm_cfg.get("request_timeout_seconds", 120)
+    timeout_seconds = ollama_cfg.get("request_timeout_seconds") or llm_cfg.get("request_timeout_seconds", 180)
 
     payload: dict[str, Any] = {
         "model": model_name,
@@ -126,14 +127,21 @@ def _call_ollama_api(prompt: str, attempt: int = 1) -> str:
         logger.error("Ollama response missing 'response' field: %s", data)
         raise OllamaConnectionError(f"Unexpected Ollama response shape (missing 'response' field): {data}")
 
-    res_text = data["response"]
+    # Parse output
+    res_text = data.get("response", "")
     response_chars = len(res_text)
 
+    prompt_tokens = data.get("prompt_eval_count", 0)
+    output_tokens = data.get("eval_count", 0)
+
     logger.info(
-        "[PERF] operation=llm_request_end duration=%.4fs provider=ollama model=%s attempt=%d",
+        "[PERF] operation=llm_request_end duration=%.4fs provider=ollama model=%s attempt=%d prompt_tokens=%d output_tokens=%d total_tokens=%d",
         duration,
         model_name,
         attempt,
+        prompt_tokens,
+        output_tokens,
+        prompt_tokens + output_tokens,
     )
     log_llm_perf(
         provider="ollama",

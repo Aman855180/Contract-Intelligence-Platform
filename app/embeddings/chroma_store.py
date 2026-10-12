@@ -13,8 +13,13 @@ SQLite.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
+
+# Disable Chroma telemetry before import to prevent broken capture() warnings
+os.environ["CHROMA_TELEMETRY"] = "False"
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -125,6 +130,68 @@ def add_chunks(chunks: list[DocumentChunk], embeddings: list[list[float]]) -> No
     logger.info("Stored %d chunk(s) in ChromaDB collection '%s'.", len(chunks), _COLLECTION_NAME)
 
 
+def query_similar_batch(
+    query_embeddings: list[list[float]],
+    top_k: int,
+    document_id: str | None = None,
+) -> list[list[dict]]:
+    """
+    Query ChromaDB for the top-K most similar chunks to multiple query embeddings
+    in a single batch call.
+
+    Args:
+        query_embeddings: List of query embedding vectors.
+        top_k: Number of results to return per query.
+        document_id: Optional — if supplied, restricts results to chunks
+            belonging to this document.
+
+    Returns:
+        List of result lists (one result list per query embedding), each containing
+        dicts with: chunk_id, text, metadata, and distance.
+    """
+    if not query_embeddings:
+        return []
+
+    with perf_span("chroma_vector_retrieval_batch", extra_info=f"queries={len(query_embeddings)} top_k={top_k} doc_id={document_id}"):
+        collection = get_or_create_collection()
+        if collection.count() == 0:
+            return [[] for _ in query_embeddings]
+
+        where_filter = {"document_id": document_id} if document_id else None
+
+        raw = collection.query(
+            query_embeddings=query_embeddings,
+            n_results=min(top_k, collection.count()),
+            where=where_filter,
+        )
+
+        all_results: list[list[dict]] = []
+        all_ids = raw.get("ids", [])
+        all_documents = raw.get("documents", [])
+        all_metadatas = raw.get("metadatas", [])
+        all_distances = raw.get("distances", [])
+
+        for q_idx in range(len(query_embeddings)):
+            ids = all_ids[q_idx] if q_idx < len(all_ids) else []
+            documents = all_documents[q_idx] if q_idx < len(all_documents) else []
+            metadatas = all_metadatas[q_idx] if q_idx < len(all_metadatas) else []
+            distances = all_distances[q_idx] if q_idx < len(all_distances) else []
+
+            results: list[dict] = []
+            for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
+                results.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "text": text,
+                        "metadata": metadata,
+                        "distance": distance,
+                    }
+                )
+            all_results.append(results)
+
+        return all_results
+
+
 def query_similar(
     query_embedding: list[float],
     top_k: int,
@@ -145,34 +212,8 @@ def query_similar(
         and distance (cosine distance; lower is more similar).
     """
     with perf_span("chroma_vector_retrieval", extra_info=f"top_k={top_k} doc_id={document_id}"):
-        collection = get_or_create_collection()
-        if collection.count() == 0:
-            return []
-
-        where_filter = {"document_id": document_id} if document_id else None
-
-        raw = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(top_k, collection.count()),
-            where=where_filter,
-        )
-
-        results: list[dict] = []
-        ids = raw.get("ids", [[]])[0]
-        documents = raw.get("documents", [[]])[0]
-        metadatas = raw.get("metadatas", [[]])[0]
-        distances = raw.get("distances", [[]])[0]
-
-        for chunk_id, text, metadata, distance in zip(ids, documents, metadatas, distances):
-            results.append(
-                {
-                    "chunk_id": chunk_id,
-                    "text": text,
-                    "metadata": metadata,
-                    "distance": distance,
-                }
-            )
-        return results
+        batch_results = query_similar_batch([query_embedding], top_k=top_k, document_id=document_id)
+        return batch_results[0] if batch_results else []
 
 
 def delete_document_chunks(document_id: str) -> None:

@@ -12,12 +12,14 @@ from __future__ import annotations
 
 from app.groundedness.nli_checker import check_groundedness
 from app.llm.prompt_loader import load_prompt
-from app.llm.provider import generate
+from app.llm.provider import get_llm_provider, get_qa_provider
 from app.llm.response_parsers import parse_qa_response
 from app.models.retrieval import QAAnswer, RetrievedChunk
 from app.retriever.hybrid_retriever import hybrid_retrieve
+from app.utils.config_loader import get_settings
 from app.utils.logging_setup import get_logger
 from app.utils.perf import perf_span
+from app.utils.runtime_config import get_runtime_bool
 
 logger = get_logger(__name__)
 
@@ -94,7 +96,27 @@ def answer_question(question: str) -> QAAnswer:
         retrieved_context = _format_retrieved_context(retrieval.chunks)
         prompt = load_prompt("qa_prompt.txt", retrieved_context=retrieved_context, question=question)
 
-        raw_response = generate(prompt)
+        settings = get_settings()
+        llm_cfg = settings.get("llm", {})
+        fallback_enabled = get_runtime_bool(
+            "LLM_FALLBACK_TO_OLLAMA", bool(llm_cfg.get("fallback_to_ollama", False))
+        )
+        qa_provider = get_qa_provider(settings)
+
+        try:
+            raw_response = qa_provider.generate(prompt, attempt=1)
+        except Exception as exc:
+            if fallback_enabled and qa_provider.provider_name != "ollama":
+                logger.warning(
+                    "QA provider '%s' failed (%s). Falling back to Ollama.",
+                    qa_provider.provider_name,
+                    type(exc).__name__,
+                )
+                ollama_provider = get_llm_provider(settings, provider_type="ollama")
+                raw_response = ollama_provider.generate(prompt, attempt=1)
+            else:
+                raise
+
         parsed = parse_qa_response(raw_response)
 
         if parsed["answer"] == "NOT_FOUND_IN_CONTRACT":

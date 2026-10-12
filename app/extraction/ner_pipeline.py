@@ -50,13 +50,30 @@ def _load_ner_pipeline() -> NERPipelineProtocol:
     ner_cfg = settings.get("ner", {})
     model_name = ner_cfg.get("model_name", "dslim/bert-base-NER")
     aggregation_strategy = ner_cfg.get("aggregation_strategy", "simple")
+    device_str = ner_cfg.get("device", "cpu")
+    # transformers.pipeline uses device=-1 for CPU, 0 for first GPU
+    pipeline_device = 0 if device_str.startswith("cuda") else -1
 
     try:
+        import os
+        import torch
         from transformers import pipeline
 
-        logger.info("Loading NER pipeline '%s' (aggregation_strategy=%s)...", model_name, aggregation_strategy)
+        if pipeline_device == -1:
+            target_threads = min(os.cpu_count() or 4, 12)
+            torch.set_num_threads(target_threads)
+
+        logger.info(
+            "Loading NER pipeline '%s' on device '%s' (aggregation_strategy=%s)...",
+            model_name,
+            device_str,
+            aggregation_strategy,
+        )
         _pipeline_instance = pipeline(
-            "ner", model=model_name, aggregation_strategy=aggregation_strategy
+            "ner",
+            model=model_name,
+            aggregation_strategy=aggregation_strategy,
+            device=pipeline_device,
         )
         logger.info("NER pipeline '%s' loaded successfully.", model_name)
     except Exception as exc:

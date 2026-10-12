@@ -62,7 +62,13 @@ def _load_model() -> EmbeddingModel:
 
     with perf_span("embedding_model_loading", extra_info=f"model={model_name} device={device}"):
         try:
+            import os
+            import torch
             from sentence_transformers import SentenceTransformer
+
+            if device == "cpu":
+                target_threads = min(os.cpu_count() or 4, 12)
+                torch.set_num_threads(target_threads)
 
             logger.info("Loading embedding model '%s' on device '%s'...", model_name, device)
             _model_instance = SentenceTransformer(model_name, device=device)
@@ -113,6 +119,41 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return [list(map(float, vector)) for vector in vectors]
 
 
+def embed_queries(queries: list[str]) -> list[list[float]]:
+    """
+    Generate embeddings for a batch of user queries, applying the BGE
+    asymmetric-retrieval query instruction prefix from config to each query.
+
+    Args:
+        queries: List of raw user query texts.
+
+    Returns:
+        List of query embedding vectors in the same order.
+
+    Raises:
+        EmbeddingError: If the model fails to load or encoding fails.
+    """
+    if not queries:
+        return []
+
+    settings = get_settings()
+    embeddings_cfg = settings.get("embeddings", {})
+    instruction = embeddings_cfg.get("query_instruction", "")
+    normalize = embeddings_cfg.get("normalize_embeddings", True)
+    batch_size = embeddings_cfg.get("batch_size", 16)
+
+    model = _load_model()
+    prefixed_queries = [f"{instruction}{q}" for q in queries]
+    with perf_span("embed_queries", extra_info=f"count={len(queries)}"):
+        try:
+            vectors = model.encode(prefixed_queries, normalize_embeddings=normalize, batch_size=batch_size)
+        except Exception as exc:
+            logger.error("Failed to embed %d queries: %s", len(queries), exc)
+            raise EmbeddingError(f"Query batch embedding generation failed: {exc}") from exc
+
+    return [list(map(float, vector)) for vector in vectors]
+
+
 def embed_query(query: str) -> list[float]:
     """
     Generate an embedding for a single user query, applying the BGE
@@ -127,18 +168,7 @@ def embed_query(query: str) -> list[float]:
     Raises:
         EmbeddingError: If the model fails to load or encoding fails.
     """
-    settings = get_settings()
-    embeddings_cfg = settings.get("embeddings", {})
-    instruction = embeddings_cfg.get("query_instruction", "")
-    normalize = embeddings_cfg.get("normalize_embeddings", True)
-
-    model = _load_model()
-    prefixed_query = f"{instruction}{query}"
-    with perf_span("embed_query", extra_info=f"query_chars={len(query)}"):
-        try:
-            vector = model.encode([prefixed_query], normalize_embeddings=normalize, batch_size=1)[0]
-        except Exception as exc:
-            logger.error("Failed to embed query '%s': %s", query, exc)
-            raise EmbeddingError(f"Query embedding generation failed: {exc}") from exc
-
-    return list(map(float, vector))
+    results = embed_queries([query])
+    if not results:
+        return []
+    return results[0]

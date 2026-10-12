@@ -134,6 +134,20 @@ class TestGenerateReport:
 # ---------------------------------------------------------------------------
 
 class TestReportValidation:
+    def test_missing_required_field_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bad = json.loads(_valid_report_json())
+        del bad["overview"]
+        monkeypatch.setattr(report_generator, "generate", lambda p: json.dumps(bad))
+        with pytest.raises(ReportValidationError):
+            report_generator.generate_report(_make_extraction(), _make_assessment())
+
+    def test_incorrect_field_type_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        bad = json.loads(_valid_report_json())
+        bad["key_parties"][0]["role"] = 7
+        monkeypatch.setattr(report_generator, "generate", lambda p: json.dumps(bad))
+        with pytest.raises(ReportValidationError):
+            report_generator.generate_report(_make_extraction(), _make_assessment())
+
     def test_invalid_severity_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         bad = json.loads(_valid_report_json())
         bad["risk_flags"][0]["severity"] = "critical"  # not in low|medium|high
@@ -198,6 +212,30 @@ class TestRetryLogic:
 
         assert len(prompts) >= 2
         assert "invalid" in prompts[1].lower() or "error" in prompts[1].lower()
+
+    def test_prompt_declares_report_contract_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        prompts: list[str] = []
+
+        def capture(prompt: str, **kwargs) -> str:
+            prompts.append(prompt)
+            return _valid_report_json()
+
+        monkeypatch.setattr(report_generator, "generate", capture)
+        report_generator.generate_report(_make_extraction(), _make_assessment())
+        prompt = prompts[0]
+        for field in ("overview", "key_parties", "role", "important_dates", "payment_terms",
+                      "clause_type", "summary", "source_contract", "source_page", "recommendations"):
+            assert field in prompt
+        assert "Do not add fields such as contract_name" in prompt
+
+    def test_gemini_schema_matches_required_pydantic_fields(self) -> None:
+        expected = set(report_generator._LLMReportOutput.model_fields)
+        schema = report_generator.LLM_REPORT_OUTPUT_SCHEMA
+        assert set(schema["properties"]) == expected
+        assert set(schema["required"]) == {
+            name for name, field in report_generator._LLMReportOutput.model_fields.items()
+            if field.is_required()
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -270,3 +308,112 @@ class TestContextHelpers:
         assert by_cat["missing_signature_field"] == "high"
         assert by_cat["missing_confidentiality_clause"] == "medium"
         assert by_cat["ambiguous_payment_terms"] == "low"
+
+    def test_generate_fallback_to_ollama_on_gemini_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock
+        from app.llm.exceptions import GeminiConnectionError
+
+        mock_gemini = MagicMock()
+        mock_gemini.provider_name = "gemini"
+        mock_gemini.generate.side_effect = GeminiConnectionError("Network down")
+
+        mock_ollama = MagicMock()
+        mock_ollama.provider_name = "ollama"
+        mock_ollama.generate.return_value = _valid_report_json()
+
+        def mock_get_report_provider(settings=None):
+            return mock_gemini
+
+        def mock_get_llm_provider(settings=None, provider_type=None):
+            if provider_type == "ollama":
+                return mock_ollama
+            return mock_gemini
+
+        monkeypatch.setattr(report_generator, "get_report_provider", mock_get_report_provider)
+        monkeypatch.setattr(report_generator, "get_llm_provider", mock_get_llm_provider)
+        monkeypatch.setattr(report_generator, "get_settings", lambda: {"llm": {"fallback_to_ollama": True}})
+        monkeypatch.delenv("LLM_FALLBACK_TO_OLLAMA", raising=False)
+
+        result = report_generator.generate("test prompt")
+        assert result == _valid_report_json()
+        mock_gemini.generate.assert_called_once()
+        mock_ollama.generate.assert_called_once()
+
+    def test_generate_propagates_gemini_error_when_fallback_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock
+        from app.llm.exceptions import GeminiConnectionError
+
+        gemini = MagicMock()
+        gemini.provider_name = "gemini"
+        gemini.generate.side_effect = GeminiConnectionError("Gemini request failed")
+        ollama = MagicMock()
+        monkeypatch.setattr(report_generator, "get_report_provider", lambda settings=None: gemini)
+        monkeypatch.setattr(report_generator, "get_llm_provider", lambda settings=None, provider_type=None: ollama)
+        monkeypatch.setattr(report_generator, "get_settings", lambda: {"llm": {"fallback_to_ollama": True}})
+        monkeypatch.setenv("LLM_FALLBACK_TO_OLLAMA", "false")
+
+        with pytest.raises(GeminiConnectionError, match="Gemini request failed"):
+            report_generator.generate("test prompt")
+        gemini.generate.assert_called_once()
+        ollama.generate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Deterministic risk flag assembly tests (Option A)
+# ---------------------------------------------------------------------------
+
+class TestDeterministicRiskFlags:
+    def test_llm_json_without_risk_flags_populates_from_assessment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        json_no_risk = json.loads(_valid_report_json())
+        del json_no_risk["risk_flags"]  # simulate model omitting risk_flags per new prompt
+        monkeypatch.setattr(report_generator, "generate", lambda p: json.dumps(json_no_risk))
+
+        assessment = _make_assessment()
+        report = report_generator.generate_report(_make_extraction(), assessment)
+        assert len(report.risk_flags) == 1
+        assert report.risk_flags[0].category == "missing_signature_field"
+        assert report.risk_flags[0].severity == "high"
+        assert report.risk_flags[0].explanation == "No signature block detected."
+
+    def test_empty_assessment_produces_empty_report_risk_flags(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(report_generator, "generate", lambda p: _valid_report_json())
+        empty_assessment = RiskAssessment(
+            document_id="doc-1",
+            contract_name="Test Contract",
+            flags=[
+                RiskFlag(category=RiskCategory.MISSING_SIGNATURE_FIELD,
+                         source=RiskFlagSource.RULE_BASED, triggered=False, weight=25,
+                         explanation="Signature present."),
+            ],
+            risk_score=0,
+        )
+        report = report_generator.generate_report(_make_extraction(), empty_assessment)
+        assert report.risk_flags == []
+
+    def test_multiple_triggered_flags_correctly_mapped(self) -> None:
+        assessment = RiskAssessment(
+            document_id="doc-1",
+            contract_name="Test Contract",
+            flags=[
+                RiskFlag(category=RiskCategory.UNLIMITED_INDEMNITY_LANGUAGE,
+                         source=RiskFlagSource.LLM_CLASSIFIED, triggered=True, weight=25,
+                         explanation="Uncapped indemnity.", source_page=2),
+                RiskFlag(category=RiskCategory.MISSING_TERMINATION_CLAUSE,
+                         source=RiskFlagSource.RULE_BASED, triggered=True, weight=15,
+                         explanation="No termination clause.", source_page=1),
+                RiskFlag(category=RiskCategory.AMBIGUOUS_PAYMENT_TERMS,
+                         source=RiskFlagSource.LLM_CLASSIFIED, triggered=True, weight=10,
+                         explanation="No milestone dates.", source_page=3),
+                RiskFlag(category=RiskCategory.MISSING_CONFIDENTIALITY_CLAUSE,
+                         source=RiskFlagSource.RULE_BASED, triggered=False, weight=15,
+                         explanation="Confidentiality clause present."),
+            ],
+            risk_score=50,
+        )
+        report_flags = report_generator._build_report_risk_flags(assessment)
+        assert len(report_flags) == 3
+        by_cat = {f.category: f for f in report_flags}
+        assert by_cat["unlimited_indemnity_language"].severity == "high"
+        assert by_cat["unlimited_indemnity_language"].source_page == 2
+        assert by_cat["missing_termination_clause"].severity == "medium"
+        assert by_cat["ambiguous_payment_terms"].severity == "low"

@@ -88,7 +88,41 @@ def _index_sample_contract() -> None:
     index_document(parsed)
 
 
+def _stub_qa_provider(monkeypatch: pytest.MonkeyPatch, response) -> None:
+    class StubProvider:
+        provider_name = "test"
+
+        def generate(self, prompt: str, attempt: int | None = None) -> str:
+            return response(prompt) if callable(response) else response
+
+    monkeypatch.setattr(qa_service, "get_qa_provider", lambda settings: StubProvider())
+
+
 class TestAnswerQuestion:
+    def test_gemini_failure_does_not_fallback_when_disabled(
+        self, isolated_qa_env, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.llm.exceptions import GeminiConnectionError
+
+        _index_sample_contract()
+
+        class FailingGeminiProvider:
+            provider_name = "gemini"
+
+            def generate(self, prompt: str, attempt: int | None = None) -> str:
+                raise GeminiConnectionError("Gemini unavailable")
+
+        monkeypatch.setenv("LLM_FALLBACK_TO_OLLAMA", "false")
+        monkeypatch.setattr(qa_service, "get_qa_provider", lambda settings: FailingGeminiProvider())
+        monkeypatch.setattr(
+            qa_service,
+            "get_llm_provider",
+            lambda *args, **kwargs: pytest.fail("Ollama fallback must remain disabled"),
+        )
+
+        with pytest.raises(GeminiConnectionError, match="Gemini unavailable"):
+            qa_service.answer_question("What is the payment term?")
+
     def test_returns_grounded_answer_with_citation(self, isolated_qa_env, monkeypatch: pytest.MonkeyPatch) -> None:
         _index_sample_contract()
 
@@ -98,7 +132,7 @@ class TestAnswerQuestion:
             "SOURCE_PAGE: 1\n"
             "SUPPORTING_TEXT: Payment shall be due within thirty days of invoice receipt by the client."
         )
-        monkeypatch.setattr(qa_service, "generate", lambda prompt: llm_response)
+        _stub_qa_provider(monkeypatch, llm_response)
 
         fake_verdict = GroundednessVerdict(
             claim="Payment is due within 30 days of invoice receipt.",
@@ -125,7 +159,7 @@ class TestAnswerQuestion:
             called["flag"] = True
             raise AssertionError("LLM should not be called when no evidence is retrieved.")
 
-        monkeypatch.setattr(qa_service, "generate", fail_if_called)
+        _stub_qa_provider(monkeypatch, fail_if_called)
 
         answer = qa_service.answer_question("What is the payment term?")
 
@@ -137,7 +171,7 @@ class TestAnswerQuestion:
         _index_sample_contract()
 
         llm_response = "ANSWER: NOT_FOUND_IN_CONTRACT\nSOURCE_CONTRACT: \nSOURCE_PAGE: \nSUPPORTING_TEXT: "
-        monkeypatch.setattr(qa_service, "generate", lambda prompt: llm_response)
+        _stub_qa_provider(monkeypatch, llm_response)
 
         called = {"flag": False}
 
@@ -161,7 +195,7 @@ class TestAnswerQuestion:
             "SOURCE_PAGE: 1\n"
             "SUPPORTING_TEXT: Payment shall be due within thirty days of invoice receipt by the client."
         )
-        monkeypatch.setattr(qa_service, "generate", lambda prompt: llm_response)
+        _stub_qa_provider(monkeypatch, llm_response)
 
         ungrounded_verdict = GroundednessVerdict(
             claim="Liability is completely unlimited under this agreement.",
@@ -182,7 +216,7 @@ class TestAnswerQuestion:
         from app.llm.exceptions import LLMResponseParsingError
 
         _index_sample_contract()
-        monkeypatch.setattr(qa_service, "generate", lambda prompt: "completely unstructured garbage text")
+        _stub_qa_provider(monkeypatch, "completely unstructured garbage text")
 
         with pytest.raises(LLMResponseParsingError):
             qa_service.answer_question("What is the payment term?")
@@ -196,7 +230,7 @@ class TestAnswerQuestion:
             "SOURCE_PAGE: 2\n"
             "SUPPORTING_TEXT: Either party may terminate this agreement with sixty days written notice."
         )
-        monkeypatch.setattr(qa_service, "generate", lambda prompt: llm_response)
+        _stub_qa_provider(monkeypatch, llm_response)
 
         captured = {}
 

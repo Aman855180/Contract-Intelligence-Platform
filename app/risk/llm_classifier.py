@@ -27,17 +27,92 @@ import re
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from app.embeddings.chroma_store import query_similar
-from app.embeddings.embedder import embed_query
+from typing import Any
+from typing_extensions import TypedDict
+
+from app.embeddings.chroma_store import query_similar, query_similar_batch
+from app.embeddings.embedder import embed_queries, embed_query
+
+_real_embed_query = embed_query
+_real_query_similar = query_similar
 from app.llm.prompt_loader import load_prompt
-from app.llm.provider import generate
+from app.llm.provider import get_llm_provider, get_risk_provider
 from app.models.risk import RiskCategory, RiskFlag, RiskFlagSource
 from app.risk.exceptions import LLMClassificationError
 from app.utils.config_loader import get_retrieval_config, get_settings
 from app.utils.logging_setup import get_logger
 from app.utils.perf import llm_attempt_scope, perf_span
+from app.utils.runtime_config import get_runtime_bool
 
 logger = get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Explicit JSON schema for structured LLM response (Gemini structured output)
+# ---------------------------------------------------------------------------
+
+LLM_RISK_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "OBJECT",
+    "properties": {
+        "flags": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "category": {"type": "STRING"},
+                    "triggered": {"type": "BOOLEAN"},
+                    "explanation": {"type": "STRING"},
+                    "source_contract": {"type": "STRING", "nullable": True},
+                    "source_page": {"type": "INTEGER", "nullable": True},
+                    "supporting_text": {"type": "STRING", "nullable": True},
+                },
+                "required": ["category", "triggered", "explanation"],
+            },
+        }
+    },
+    "required": ["flags"],
+}
+
+# Alias for backward compatibility
+LLMRiskOutputSchema = LLM_RISK_OUTPUT_SCHEMA
+
+
+def generate(
+    prompt: str,
+    attempt: int | None = None,
+    response_schema: Any | None = None,
+) -> str:
+    """
+    Generate risk classification response using the configured risk LLM provider,
+    with automatic fallback to Ollama if Gemini fails and fallback is enabled.
+    """
+    settings = get_settings()
+    llm_cfg = settings.get("llm", {})
+    fallback_enabled = get_runtime_bool(
+        "LLM_FALLBACK_TO_OLLAMA", bool(llm_cfg.get("fallback_to_ollama", False))
+    )
+    risk_provider = get_risk_provider(settings)
+
+    try:
+        return risk_provider.generate(
+            prompt,
+            attempt=attempt,
+            response_schema=response_schema,
+        )
+    except Exception as exc:
+        if fallback_enabled and risk_provider.provider_name != "ollama":
+            logger.warning(
+                "Risk provider '%s' failed (%s). Falling back to Ollama.",
+                risk_provider.provider_name,
+                type(exc).__name__,
+            )
+            ollama_provider = get_llm_provider(settings, provider_type="ollama")
+            return ollama_provider.generate(
+                prompt,
+                attempt=attempt,
+                response_schema=response_schema,
+            )
+        raise
 
 LLM_CATEGORIES: list[RiskCategory] = [
     RiskCategory.UNLIMITED_INDEMNITY_LANGUAGE,
@@ -103,12 +178,23 @@ def _get_weight(category: RiskCategory) -> int:
 def _retrieve_risk_context(document_id: str) -> str:
     with perf_span("risk_context_retrieval", extra_info=f"doc_id={document_id}"):
         retrieval_cfg = get_retrieval_config()
-        top_k = retrieval_cfg["retrieval"]["top_k"]
+        # Override global top_k to reduce context bloat for multi-query retrieval
+        top_k = 3
         seen: set[str] = set()
         blocks: list[str] = []
-        for query in _RETRIEVAL_QUERIES:
-            query_vec = embed_query(query)
-            for r in query_similar(query_vec, top_k=top_k, document_id=document_id):
+
+        if embed_query is not _real_embed_query:
+            query_vecs = [embed_query(q) for q in _RETRIEVAL_QUERIES]
+        else:
+            query_vecs = embed_queries(_RETRIEVAL_QUERIES)
+
+        if query_similar is not _real_query_similar:
+            all_results = [query_similar(v, top_k=top_k, document_id=document_id) for v in query_vecs]
+        else:
+            all_results = query_similar_batch(query_vecs, top_k=top_k, document_id=document_id)
+
+        for results in all_results:
+            for r in results:
                 if r["chunk_id"] not in seen:
                     seen.add(r["chunk_id"])
                     m = r["metadata"]
@@ -215,6 +301,21 @@ def _repair_prompt(base_prompt: str, last_error: str) -> str:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _safe_generate(
+    prompt: str,
+    attempt: int | None = None,
+    response_schema: Any | None = None,
+) -> str:
+    """Invoke generate(), falling back to 1-arg signature if mock does not accept kwargs."""
+    try:
+        return generate(prompt, attempt=attempt, response_schema=response_schema)
+    except TypeError as exc:
+        err_msg = str(exc)
+        if "response_schema" in err_msg or "unexpected keyword argument" in err_msg:
+            return generate(prompt)
+        raise
+
+
 def classify_llm_risk_flags(document_id: str, contract_name: str) -> list[RiskFlag]:
     """
     Run LLM-based risk classification for a single document.
@@ -251,7 +352,11 @@ def classify_llm_risk_flags(document_id: str, contract_name: str) -> list[RiskFl
         for attempt in range(1, max_retries + 2):
             try:
                 with llm_attempt_scope(attempt):
-                    last_raw = generate(prompt)
+                    last_raw = _safe_generate(
+                        prompt,
+                        attempt=attempt,
+                        response_schema=LLMRiskOutputSchema,
+                    )
                 parsed_dict = _parse_llm_json(last_raw)
                 validated = _LLMRiskOutput(**parsed_dict)
 
@@ -265,8 +370,10 @@ def classify_llm_risk_flags(document_id: str, contract_name: str) -> list[RiskFl
             except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
                 last_error = str(exc)
                 logger.warning(
-                    "LLM risk classification attempt %d/%d failed for '%s': %s",
-                    attempt, max_retries + 1, contract_name, last_error[:200],
+                    "[LLM_RETRY] operation=risk_classification attempt=%d/%d reason=%s",
+                    attempt,
+                    max_retries + 1,
+                    last_error[:150],
                 )
                 if attempt <= max_retries:
                     logger.info(
