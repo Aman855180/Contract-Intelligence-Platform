@@ -9,6 +9,13 @@ output with Pydantic validation, NLI-based groundedness scoring, and a
 documented evaluation methodology.
 
 ---
+## Live Demo
+
+**Try the deployed application:** [Contract Intelligence Platform](https://contract-intelligence-platform-fmcudnumzmzkpqx8tkfrgg.streamlit.app/)
+
+Explore AI-powered contract analysis, grounded question answering, contract comparison, risk assessment, and executive report generation.
+
+> **Note:** Upload a sample PDF or DOCX contract to explore the application's features. Answers depend on the uploaded documents and configured LLM provider.
 
 ## Architecture
 
